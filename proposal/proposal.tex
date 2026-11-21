@@ -39,8 +39,9 @@ We propose a Franka arm that picks up a peg from a known holder, finds a
 taped-down box by touching it with the peg, and inserts the peg into the box's
 hole, using only its own joint sensing: no camera, no wrist force-torque
 sensor, and no prior knowledge of where the box or hole is. Phase~1 localizes
-the box and then the hole with approach-until-contact probes and two particle
-filters. Phase~2 inserts the peg with a reinforcement-learning policy trained
+the box with sideways approach-until-contact probes made with the side of the
+peg's shaft and a particle filter, then searches the region around the box
+centre for the hole. Phase~2 inserts the peg with a reinforcement-learning policy trained
 in MuJoCo, which reads a short history of joint states and the Franka's
 estimated external joint torques. The estimation error measured in Phase~1 sets
 the hole-position noise Phase~2 is trained against. We will evaluate
@@ -85,13 +86,15 @@ $\dot q$ and estimated external torques $\tauext$.
 
 \begin{itemize}
   \item \textbf{Peg design:} a square top, so the gripper always holds it the
-  same way, and a round shaft with a rounded-off tip for insertion. Because the
-  shaft is round, the peg's rotation does not matter for insertion.
+  same way, and a 25\,mm diameter round shaft with a 1\,mm chamfer at the tip.
+  Because the shaft is round, the peg's rotation does not matter for insertion.
   \item \textbf{Peg pickup:} pegs sit in a holder at a fixed, known pose, so they
   are never localized. The robot grasps one and keeps it for the whole run.
-  \item \textbf{Peg as probe:} all probing uses the peg tip, not the gripper
-  fingers. The gripper is not rotationally symmetric, so its contact geometry
-  would depend on wrist angle; the peg's rounded tip does not.
+  \item \textbf{Peg as probe:} the box is found with the side of the
+  cylindrical shaft, held vertical. A contact anywhere on it puts the box wall
+  exactly one shaft radius (12.5\,mm) from the peg's axis, whatever the wrist
+  angle. The gripper fingers are not rotationally symmetric, so they are never
+  used to probe.
   \item \textbf{Box:} 3D-printed with known outer dimensions, taped to the table
   at an unknown position and rotation inside a region of about
   $30\times30$\,cm in the clear table area in front of the robot.
@@ -128,9 +131,9 @@ will actually receive.
   lbl/.style={font=\scriptsize, text=black!65},
   zone/.style={rounded corners=5pt, inner xsep=12pt, inner ysep=10pt},
 ]
-  \node[box] (mj)  at (-3.55, 0)    {\textbf{MuJoCo scene}\\Panda, capsule-tip peg, box\\Hole offset within radius $R$};
+  \node[box] (mj)  at (-3.55, 0)    {\textbf{MuJoCo scene}\\Panda, chamfered peg, box\\Hole offset within radius $R$};
   \node[box] (ppo) at ( 3.55, 0)    {\textbf{PPO training}\\Stable-Baselines3 on CPU\\Hole noise from Phase~1 error};
-  \node[box] (p1)  at (-3.55,-3.35) {\textbf{Phase 1: grasp, then localize}\\Pick peg at known holder pose\\Find box centre with peg tip\\Search disc of radius $R$ for hole};
+  \node[box] (p1)  at (-3.55,-3.35) {\textbf{Phase 1: grasp, then localize}\\Pick peg at known holder pose\\Find box with side of shaft\\Search for hole (method TBD)};
   \node[box] (p2)  at ( 3.55,-3.35) {\textbf{Phase 2: RL insertion}\\History of $q$, $\dot q$, $\tauext$\\Corrections to a spiral search\\Runs at 20--50\,Hz};
   \node[wide] (ctrl) at (0,-5.65)   {\textbf{Cartesian impedance controller}\\Low stiffness, raised collision thresholds};
   \node[wide] (fr)   at (0,-7.25)   {\textbf{Franka arm and gripper}\\Joint encoders and joint torque sensors};
@@ -168,32 +171,31 @@ orientation is estimated.
 
 \textbf{Basic move: approach until contact.} Move along a direction at low speed
 until $\tauext$ (or the Franka's Cartesian contact flags) crosses a calibrated
-threshold, and record the peg tip's position by forward kinematics. Each contact
-gives one surface point; each move that ends without contact is also evidence
-that nothing lies along that path.
+threshold, and record the peg's position by forward kinematics. For a sideways
+move the wall lies one shaft radius from the peg's axis along the direction of
+travel, so each contact gives one wall point; each move that ends without contact
+is also evidence that nothing lies along that path.
 
 \begin{enumerate}
   \item \textbf{Grasp the peg} at the holder's known pose. The square top seats
-  the peg the same way every time, so the tip offset is calibrated once.
+  the peg the same way every time, so its axis and length relative to the
+  gripper are calibrated once.
   \item \textbf{Table height} from one downward touch.
-  \item \textbf{Coarse search:} sideways sweeps across the region, tip below the
-  box's top, until the peg hits the box.
+  \item \textbf{Coarse search:} sideways sweeps across the region with the peg
+  vertical and the lower shaft below the box's top, until the side of the
+  shaft hits a wall.
   \item \textbf{Box pose:} a particle filter~\cite{thrun2005probabilistic} over
-  the box centre and rotation. Side contacts are scored by distance to the
-  box's known outline; free paths remove particles whose box would overlap them.
-  The next probe goes to the side whose predicted contact varies most across
-  particles, and probing stops when the centre is known to about 2\,mm.
-  \item \textbf{Hole search:} a second particle filter over the hole's $(x,y)$,
-  initialized uniform over a disc of radius $R$ around the estimated centre,
-  widened by the centre's uncertainty. Pressing straight down within about one
-  hole radius of the hole makes the rounded tip slide in: it drops below the top
-  surface and is pushed sideways toward the hole centre. A press that stays at
-  top height rules out its neighbourhood. Each next press goes where it removes
-  the most remaining probability. The worst case is roughly
-  $(R/r_{\mathrm{hole}})^2$ presses, e.g.\ about 16 for $R=20$\,mm and
-  $r_{\mathrm{hole}}=5$\,mm.
-  \item \textbf{Refine and hand off:} a few presses around the rim refine the
-  centre; the arm then lifts the peg to a known hover pose for Phase~2.
+  the box centre and rotation. Each wall point is scored by its distance to the
+  box's known outline; free sweeps remove particles whose box would overlap the
+  swept shaft. The next probe goes to the side whose predicted contact varies
+  most across particles, and probing stops when the centre is known to about
+  2\,mm. One downward touch on the top face gives its height.
+  \item \textbf{Hole search (strategy to be decided):} start from the box-centre
+  estimate, with the hole somewhere in a disc of radius $R$ around it, widened by
+  the centre's uncertainty. Whatever the sensing, a particle filter over the
+  hole's $(x,y)$ can fuse the measurements and choose the next one.
+  \item \textbf{Hand off:} once the hole is found, the arm lifts the peg to a
+  known hover pose above the estimate for Phase~2.
 \end{enumerate}
 
 Ground truth for evaluation comes from guiding the arm by hand until the peg is
@@ -209,7 +211,7 @@ hand-written probe rule with an information-gain or RL probing policy.
 \toprule
 Experiment & Question & Conditions & Metrics & Trials \\
 \midrule
-E1: localization & How accurately can touch alone find the hole? & Random box placements and hole offsets within $R$ & Hole-centre error (mm), side probes and top presses, time (s) & $\sim$20 real \\
+E1: localization & How accurately can touch alone find the hole? & Random box placements and hole offsets within $R$ & Box- and hole-centre error (mm), number of contacts, time (s) & $\sim$20 real \\
 E2: insertion in sim & Does RL beat the scripted spiral? & Spiral vs.\ spiral + RL vs.\ full RL & Success rate, time to insert, peak force, path length & 500+ simulated per condition \\
 E3: torque ablation & Does $\tauext$ help over joint state alone? & RL with $q,\dot q$ vs.\ $q,\dot q,\tauext$ & Same as E2 & Simulated + $\sim$10 real each \\
 E4: noise level & Does training on measured Phase~1 error matter? & Training noise at $1\times$ vs.\ $2\times$ measured error & Same as E2 & Simulated \\
@@ -237,7 +239,7 @@ baseline is the same scripted spiral search without learned corrections.
 Element & Design \\
 \midrule
 Simulator & MuJoCo with the Menagerie~\cite{menagerie2022} Franka Panda; 1\,ms timestep, as mjfit recommends \\
-Peg model & A box for the square top; a capsule for the shaft, giving the round section and rounded tip in one primitive \\
+Peg model & From the team's CAD as two convex pieces: a box for the square top and a cylinder with a 1\,mm chamfer for the shaft \\
 Box model & mjfit plate with a circular hole; hole offset from the box centre uniform within $R$ \\
 Start state & Peg hovering above the estimated hole; true offset sampled from Phase~1's measured error, inflated about $1.5\times$; small grasp offset and tilt \\
 Observation & 0.3--0.6\,s history of $q$, $\dot q$, $\tauext$, plus the estimated hole centre relative to the peg tip \\
@@ -335,11 +337,11 @@ safety rules: never alone, and one person always on the emergency stop.
 \toprule
 Risk & Effect & Mitigation \\
 \midrule
-Peg slips or tilts in the gripper during probing & Tip offset changes, so every contact point is off & Square top seated against the fingers; high grip force; re-check tip height on the table between phases \\
+Peg slips or tilts in the gripper during probing & Peg axis offset changes, so every wall point is off & Square top seated against the fingers; high grip force; re-check against the table between phases \\
 Tape lets the box shift under side probes & Box estimate drifts & Strong tape or clamps; low stiffness and speed; probe sides before the top \\
 Phantom contacts in $\tauext$ from model error & False contact points corrupt the filter & Move slowly; calibrate thresholds on day 1; require the threshold to hold for several samples \\
-Hole search takes too many presses & Phase~1 is slow & Pick presses by remaining probability; space them about one hole radius apart; keep $R$ modest \\
-Rounded tip makes insertion too easy & RL shows no gain over the spiral & Tighten clearance; report time and force, not just success; widen the training error range \\
+Hole-search strategy not settled early & Phase~1 slips; Phase~2 lacks real error numbers & Choose the strategy by day 3; until then Phase~2 trains on the guessed $\pm5$\,mm range \\
+Insertion jams (flat end face, 1\,mm chamfer) & Real insertions fail at tight clearance & Low rotational stiffness so the peg can self-align; start at 1.5\,mm clearance; the policy sees $\tauext$ and can learn to wiggle \\
 Policy fails to transfer from simulation & No real RL result & Policy only corrects the spiral, so the spiral still works; report the gap; tune impedance gains to match simulation \\
 Little robot time (robot shared by 2--3 groups) & Real trials cut short & Develop Phase~2 entirely in simulation; book robot slots in week one \\
 \bottomrule

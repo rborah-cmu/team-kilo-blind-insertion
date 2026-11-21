@@ -7,9 +7,10 @@ touching it with the peg, and inserts the peg into the box's hole. It uses only
 joint sensing (joint positions, velocities and estimated external torques
 `tau_ext`): no camera, no wrist force-torque sensor.
 
-- **Phase 1, localization by touch:** approach-until-contact probes with the peg
-  tip, a particle filter for the box centre, then a second particle filter that
-  searches a disc of radius `R` around the centre for the hole.
+- **Phase 1, localization by touch:** sideways approach-until-contact probes
+  with the side of the peg's cylindrical shaft and a particle filter for the box
+  centre, then a search of the disc of radius `R` around the centre for the hole
+  (hole-search strategy still to be decided).
 - **Phase 2, RL insertion:** a PPO policy trained in MuJoCo that corrects a
   scripted spiral search, starting from Phase 1's estimate.
 
@@ -44,7 +45,7 @@ Status of each module:
 | Module | Status | Owner |
 | --- | --- | --- |
 | `localization/contact.py` | Working: debounced threshold detector | Phase 1 |
-| `localization/hole_filter.py` | Working: disc-prior particle filter with press selection | Phase 1 |
+| `localization/hole_filter.py` | Working disc-prior filter; its press model is a placeholder until the hole strategy is chosen | Phase 1 |
 | `localization/box_filter.py` | Stub | Phase 1 |
 | `insertion/spiral.py` | Working: Archimedean spiral waypoints | Phase 2 |
 | `insertion/env.py` | Stub | Phase 2 |

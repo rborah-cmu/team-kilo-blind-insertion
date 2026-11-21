@@ -1,6 +1,11 @@
-"""Particle filter for finding the hole by pressing the peg tip on the box's top face.
+"""Particle filter for the hole centre, with a disc prior around the box centre.
 
-Model: a press at point p "drops in" (the rounded tip falls below the top surface)
+NOTE: the team has not chosen the hole-search strategy yet. The disc prior,
+resampling and ``estimate`` are strategy-independent; ``update_press`` and
+``update_seated`` implement one candidate sensing model (press and detect a
+drop) and should be replaced or extended once the strategy is decided.
+
+Press model: a press at point p "drops in" (the rounded tip falls below the top surface)
 if and only if p is within ``detect_radius`` of the hole centre. A press that stays
 at top height rules out that neighbourhood; a press that drops in confines the
 hole to it. ``miss_prob`` allows for occasional misreads so one bad press does not
