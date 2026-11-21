@@ -29,3 +29,6 @@ SEARCH_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + SEARCH_MODE_OFFSET
 TRAVEL_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + TRAVEL_MODE_OFFSET
 
 FORCE_THRESHOLD = 2.0  # Newtons | Cartesian force that counts as hitting a barrier
+
+PROBE_LOOKAHEAD = 0.10 # meters | The distance to position the target position ahead of the current position
+POS_EPS = 0.01 # meters | Target is reached when the error is less than this (endpoint)
