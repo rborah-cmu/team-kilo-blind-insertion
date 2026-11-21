@@ -10,15 +10,17 @@ peg:                           # from cad/peg (see cad/peg/README.md)
   tip_offset_from_flange: 0.15 # calibrate once after grasp (Phase 1 step 1)
   holder_pose: [0.45, -0.25, 0.10, 0.0]  # x, y, z, yaw in robot base frame; TBD
 
-box:
-  size: [0.10, 0.10, 0.05]     # outer dimensions; TBD
+box:                           # from cad/peg_and_base (see its README)
+  size: [0.1267, 0.169, 0.0508]  # outer dimensions x, y, z
   search_region:               # where the box may be placed
     x: [0.35, 0.65]
     y: [-0.15, 0.15]
 
-hole:
-  clearance: 0.0015            # diametral: hole diameter = 25 mm + this; 1-2 mm to start, tighten toward 0.5 mm
-  radius: 0.01325              # = shaft_radius + clearance / 2
+hole:                          # from cad/peg_and_base
+  radius: 0.0127               # 25.4 mm through-hole
+  clearance: 0.0004            # diametral: 25.4 mm hole - 25.0 mm shaft (before print error)
+  chamfer: 0.001               # 1 mm x 45 deg at the top edge
+  cad_offset: [0.00262, 0.00302]  # hole centre from box top-face centre in this CAD
   max_offset_from_center: 0.02 # R: hole lies within this radius of the box top centre; TBD
 
 contact:
