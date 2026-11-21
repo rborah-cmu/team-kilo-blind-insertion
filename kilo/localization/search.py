@@ -8,8 +8,39 @@ and treat a Cartesian force above ``FORCE_THRESHOLD`` as contact.
 import numpy as np
 
 
-def generate_snake_waypoints(spacing: float):
-    pass
+def generate_snake_waypoints(spacing: float) -> list[np.ndarray]:
+    """Corner points of a square-wave sweep over ``common.SEARCH_SPACE_CORNERS``.
+
+    The rectangle is axis-aligned. The first pass starts at the far corner
+    (max x, min y) and runs toward the robot to (min x, min y); each next pass
+    steps ``spacing`` toward +y and reverses direction. A final pass always
+    runs along the max-y edge, so the last gap may be shorter than ``spacing``.
+
+    Args:
+        spacing: distance between neighbouring passes, in metres.
+
+    Returns:
+        List of (x, y) points; consecutive points are joined by straight moves.
+    """
+    from .common import SEARCH_SPACE_CORNERS
+
+    if not spacing > 0:
+        raise ValueError("spacing must be positive")
+
+    corners = np.asarray(SEARCH_SPACE_CORNERS, dtype=float)
+    (x_min, y_min), (x_max, y_max) = corners.min(axis=0), corners.max(axis=0)
+
+    width = y_max - y_min
+    num_steps = int(np.floor(width / spacing + 1e-9))
+    ys = np.minimum(y_min + spacing * np.arange(num_steps + 1), y_max)
+    if y_max - ys[-1] > 1e-9:
+        ys = np.append(ys, y_max)
+
+    waypoints = []
+    for i, y in enumerate(ys):
+        far, near = np.array([x_max, y]), np.array([x_min, y])
+        waypoints.extend([far, near] if i % 2 == 0 else [near, far])
+    return waypoints
 
 
 def get_ray_intersection(
