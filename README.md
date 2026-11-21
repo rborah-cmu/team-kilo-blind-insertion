@@ -50,7 +50,8 @@ Status of each module:
 | `localization/search.py` | Stub: snake-search waypoints over the plate workspace | Phase 1 |
 | `insertion/spiral.py` | Working: Archimedean spiral waypoints | Phase 2 |
 | `insertion/env.py` | Stub | Phase 2 |
-| `sim/scene.py` | Stub | Phase 2 |
+| `sim/scene.py`, `sim/geometry.py` | Working: Panda + table + shelves, peg, base with hole | Phase 2 |
+| `sim/control.py` | Working: IK and gravity-compensated joint PD (placeholder for impedance control) | Phase 2 |
 | `robot/interface.py` | Abstract interface only | Phase 1 |
 
 ## Setup
@@ -64,9 +65,42 @@ pip install -r requirements.txt
 python -m pytest tests
 ```
 
-The Franka Panda model comes from
-[MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie):
-clone it next to this repo or set `MENAGERIE_PATH` (see `configs/default.yaml`).
+## Simulation
+
+![Scene overview](docs/scene_overview.png)
+
+`kilo/sim/scene.py` builds the MuJoCo scene from the course's Lab 3 model
+(torque-controlled Panda, table and shelves, copied into
+`kilo/sim/assets/franka/`) plus:
+
+- **Base:** 126.7 × 169 × 50.8 mm, fixed to the table, with the 25.4 mm
+  chamfered through-hole. MuJoCo collides meshes as convex hulls, so the block
+  is split into 48 convex wedges around the hole (`sim/geometry.py`); the
+  simulated hole is never smaller than the CAD hole. Site `hole_top`.
+- **Peg:** 25 mm square top (box) and chamfered 25 mm shaft (convex mesh), fixed
+  in the gripper (`peg_mode="hand"`) or loose (`"free"`). Site `peg_tip`.
+
+All sizes come from `configs/default.yaml`, so changing the CAD numbers there
+changes the scene.
+
+```bash
+python scripts/view_scene.py                 # interactive viewer, peg above the hole
+python scripts/view_scene.py --mode free     # loose peg dropped into the hole
+python scripts/view_scene.py --box 0.45 0.05 0.3 --render out.png
+```
+
+```python
+from kilo.sim.scene import build_scene
+model = build_scene(peg_mode="hand", box_xy=(0.5, 0.0), box_yaw=0.0, hole_offset=(0.003, 0.003))
+```
+
+Checked by `tests/test_scene.py`: an aligned loose peg drops the full 38.1 mm
+and rests on its square top; the robot holds the peg to within 0.01 mm and
+inserts it when aligned, and jams when 2 mm off (the case Phase 2 is for).
+
+| Peg over the hole | Base from above |
+| --- | --- |
+| ![Peg close-up](docs/scene_peg_closeup.png) | ![Base top](docs/scene_base_top.png) |
 
 ## Working together
 

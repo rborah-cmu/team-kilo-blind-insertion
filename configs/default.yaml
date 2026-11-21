@@ -50,5 +50,4 @@ insertion:
   train_noise_xy: 0.005        # +/- 5 mm until Phase 1 error is measured
 
 sim:
-  timestep: 0.001
-  menagerie_path: ${MENAGERIE_PATH}
+  timestep: 0.001             # set in kilo/sim/scene.py; mjfit-style stiff contacts need <= 1 ms

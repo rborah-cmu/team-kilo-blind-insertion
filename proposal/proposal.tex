@@ -72,8 +72,8 @@ in simulation and transfers zero-shot to a real arm for peg insertion. It
 deliberately uses no force or torque sensing, and each episode starts with the
 part already touching the fixture near the hole. Their companion tool
 mjfit~\cite{mjfit} generates exact convex MuJoCo~\cite{todorov2012mujoco}
-collision geometry for pegs and holes; we use it to build our simulated box and
-hole.
+collision geometry for pegs and holes; we use the same convex-decomposition
+idea for our simulated box and hole.
 
 We extend this setting in three ways:
 \begin{itemize}
@@ -249,9 +249,9 @@ baseline is the same scripted spiral search without learned corrections.
 \toprule
 Element & Design \\
 \midrule
-Simulator & MuJoCo with the Menagerie~\cite{menagerie2022} Franka Panda; 1\,ms timestep, as mjfit recommends \\
+Simulator & MuJoCo with the course's torque-controlled Franka Panda, table and shelves (Lab~3 scene, Menagerie~\cite{menagerie2022} meshes); 1\,ms timestep \\
 Peg model & From the team's CAD as two convex pieces: a box for the square top and a cylinder with a 1\,mm chamfer for the shaft \\
-Box model & $126.7\times169\times50.8$\,mm block with a 25.4\,mm chamfered through-hole (0.4\,mm clearance), built with mjfit; hole offset from the box centre uniform within $R$ \\
+Box model & $126.7\times169\times50.8$\,mm block with a 25.4\,mm chamfered through-hole (0.4\,mm clearance), split into 48 convex wedges around the hole; hole offset from the box centre uniform within $R$ \\
 Start state & Peg hovering above the estimated hole; true offset sampled from Phase~1's measured error, inflated about $1.5\times$; small grasp offset and tilt \\
 Observation & 0.3--0.6\,s history of $q$, $\dot q$, $\tauext$, plus the estimated hole centre relative to the peg tip \\
 Action & End-effector position deltas $(x,y,z)$ to Cartesian impedance control at 20--50\,Hz; no rotation \\
