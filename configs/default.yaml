@@ -1,0 +1,38 @@
+# Shared parameters. Units: metres, seconds, newton-metres.
+# Values marked TBD are placeholders until the team decides them.
+
+peg:
+  shaft_radius: 0.004          # TBD
+  shaft_length: 0.06           # TBD
+  tip_offset_from_flange: 0.15 # calibrate once after grasp (Phase 1 step 1)
+  holder_pose: [0.45, -0.25, 0.10, 0.0]  # x, y, z, yaw in robot base frame; TBD
+
+box:
+  size: [0.10, 0.10, 0.05]     # outer dimensions; TBD
+  search_region:               # where the box may be placed
+    x: [0.35, 0.65]
+    y: [-0.15, 0.15]
+
+hole:
+  radius: 0.005                # TBD
+  clearance: 0.0015            # 1-2 mm to start, tighten toward 0.5 mm
+  max_offset_from_center: 0.02 # R: hole lies within this radius of the box top centre; TBD
+
+contact:
+  tau_ext_threshold: 1.5       # per-joint |tau_ext| that counts as contact; calibrate day 1
+  debounce_samples: 5          # threshold must hold this many consecutive samples
+  probe_speed: 0.015           # m/s
+
+hole_search:
+  num_particles: 4000
+  drop_depth: 0.002            # tip this far below the top surface counts as "in the hole"
+  stop_std: 0.001              # stop refining when estimate std falls below this
+
+insertion:
+  policy_rate_hz: 25
+  history_seconds: 0.4
+  train_noise_xy: 0.005        # +/- 5 mm until Phase 1 error is measured
+
+sim:
+  timestep: 0.001
+  menagerie_path: ${MENAGERIE_PATH}

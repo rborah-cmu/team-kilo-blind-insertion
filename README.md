@@ -1,0 +1,90 @@
+# Team Kilo: Blind Proprioceptive Peg Insertion
+
+16-662 Robot Autonomy, Fall 2026 group project.
+
+A Franka arm picks up a peg from a known holder, finds a taped-down box by
+touching it with the peg, and inserts the peg into the box's hole. It uses only
+joint sensing (joint positions, velocities and estimated external torques
+`tau_ext`): no camera, no wrist force-torque sensor.
+
+- **Phase 1, localization by touch:** approach-until-contact probes with the peg
+  tip, a particle filter for the box centre, then a second particle filter that
+  searches a disc of radius `R` around the centre for the hole.
+- **Phase 2, RL insertion:** a PPO policy trained in MuJoCo that corrects a
+  scripted spiral search, starting from Phase 1's estimate.
+
+The full plan is in [`proposal/proposal.pdf`](proposal/proposal.pdf)
+(source: [`proposal/proposal.tex`](proposal/proposal.tex)).
+
+## Key dates
+
+| Date | Milestone |
+| --- | --- |
+| Nov 23 | Work starts (day 1) |
+| Nov 29 | Phase 1 error measured on the real robot; feeds Phase 2 training |
+| Nov 30 / Dec 2 | Progress presentation (about 8 min) |
+| Dec 6 | End-to-end trials done |
+| Dec 11 | Final report (2–3 pages, IEEE two-column) and 1–3 min video due |
+
+## Repository layout
+
+```
+kilo/
+  localization/   Phase 1: contact detection, box filter, hole-search filter
+  insertion/      Phase 2: spiral baseline, MuJoCo env, PPO training
+  sim/            MuJoCo scene construction (Panda + peg + box)
+  robot/          Real-robot interface (wraps the course control stack)
+configs/          Shared parameters (hole radius R, clearance, thresholds)
+tests/            Unit tests for the pure-Python pieces
+proposal/         LaTeX proposal; grows into the final report
+```
+
+Status of each module:
+
+| Module | Status | Owner |
+| --- | --- | --- |
+| `localization/contact.py` | Working: debounced threshold detector | Phase 1 |
+| `localization/hole_filter.py` | Working: disc-prior particle filter with press selection | Phase 1 |
+| `localization/box_filter.py` | Stub | Phase 1 |
+| `insertion/spiral.py` | Working: Archimedean spiral waypoints | Phase 2 |
+| `insertion/env.py` | Stub | Phase 2 |
+| `sim/scene.py` | Stub | Phase 2 |
+| `robot/interface.py` | Abstract interface only | Phase 1 |
+
+## Setup
+
+Python 3.10 or newer.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python -m pytest tests
+```
+
+The Franka Panda model comes from
+[MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie):
+clone it next to this repo or set `MENAGERIE_PATH` (see `configs/default.yaml`).
+
+## Working together
+
+- Branch per task (`phase1/hole-search`, `phase2/env`), open a pull request,
+  get one review before merging to `main`.
+- Keep shared numbers (R, hole diameter, clearance, thresholds) in
+  `configs/default.yaml`, not hard-coded.
+- Robot safety (course rules): never run the robot alone; one person always on
+  the emergency stop.
+
+## Building the proposal
+
+```bash
+cd proposal
+pdflatex proposal.tex && pdflatex proposal.tex
+```
+
+Or upload `proposal/proposal.tex` to Overleaf.
+
+## References
+
+- A. Bronars, Y. Park *et al.*, [Blind Precise Assembly](https://younghyopark.me/blind-proprioceptive-assembly/), 2026.
+- [mjfit](https://github.com/younghyopark/mjfit): exact convex MuJoCo collision geometry for pegs and holes.

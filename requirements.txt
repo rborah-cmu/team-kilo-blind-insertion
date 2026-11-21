@@ -1,0 +1,11 @@
+numpy>=1.24
+scipy>=1.10
+pyyaml>=6.0
+matplotlib>=3.7
+mujoco>=3.3
+gymnasium>=0.29
+stable-baselines3>=2.3
+mjfit @ git+https://github.com/younghyopark/mjfit
+pytest>=7.4
+
+# Real-robot control stack: add whatever the course uses (e.g. frankapy).

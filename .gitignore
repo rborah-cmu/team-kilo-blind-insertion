@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Experiment outputs
+logs/
+runs/
+checkpoints/
+wandb/
+*.zip
+data/raw/
+
+# LaTeX build files
+proposal/*.aux
+proposal/*.log
+proposal/*.out
+proposal/*.synctex.gz
+proposal/*.fdb_latexmk
+proposal/*.fls
+proposal/build.log
+
+# Local-only files
+FinalProject.pdf
+Project_Proposal.pdf
+.claude/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
