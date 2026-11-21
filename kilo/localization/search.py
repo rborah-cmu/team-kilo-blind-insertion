@@ -42,6 +42,7 @@ def generate_snake_waypoints(spacing: float) -> list[np.ndarray]:
         waypoints.extend([far, near] if i % 2 == 0 else [near, far])
     return waypoints
 
+# Upon collision, call this function with ray direction [fx, fy] and ray origin as EE [x,y]
 def generate_ray_probe_waypoints(
     ray: np.ndarray, bounding_box: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
