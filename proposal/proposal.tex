@@ -22,6 +22,15 @@
 \renewcommand{\dblfloatpagefraction}{0.8}
 \setcounter{topnumber}{3}
 \setcounter{dbltopnumber}{2}
+% Stack floats from the top of float-only pages instead of spreading them out.
+\makeatletter
+\setlength{\@dblfptop}{0pt}
+\setlength{\@dblfpsep}{14pt plus 2pt}
+\setlength{\@dblfpbot}{0pt plus 1fil}
+\setlength{\@fptop}{0pt}
+\setlength{\@fpsep}{14pt plus 2pt}
+\setlength{\@fpbot}{0pt plus 1fil}
+\makeatother
 \newcolumntype{L}{>{\raggedright\arraybackslash}X}
 
 \begin{document}
@@ -95,14 +104,16 @@ $\dot q$ and estimated external torques $\tauext$.
   exactly one shaft radius (12.5\,mm) from the peg's axis, whatever the wrist
   angle. The gripper fingers are not rotationally symmetric, so they are never
   used to probe.
-  \item \textbf{Box:} 3D-printed with known outer dimensions, taped to the table
+  \item \textbf{Box:} 3D-printed, $126.7\times169\times50.8$\,mm, taped to the table
   at an unknown position and rotation inside a region of about
   $30\times30$\,cm in the clear table area in front of the robot.
-  \item \textbf{Hole:} one vertical hole, never angled, within a known radius $R$
-  of the box's top-face centre but not necessarily at it. $R$ and the hole
-  diameter are still to be set.
-  \item \textbf{Clearance:} 1--2\,mm between shaft and hole, tightened toward
-  0.5\,mm if time allows.
+  \item \textbf{Hole:} one vertical 25.4\,mm through-hole with a 1\,mm chamfer
+  at the top edge, never angled, within a known radius $R$ of the box's top-face
+  centre but not necessarily at it (4\,mm off-centre in the current CAD). $R$ is
+  still to be set.
+  \item \textbf{Clearance:} 0.4\,mm diametral (25.4\,mm hole, 25.0\,mm shaft),
+  before printing error. A looser base of about 1.5\,mm may be printed to stage
+  the difficulty.
   \item \textbf{Control:} Cartesian impedance control at low stiffness, about
   1--2\,cm/s while probing, with the Franka's collision thresholds raised so
   contact does not trigger its safety stop.
@@ -217,7 +228,7 @@ E3: torque ablation & Does $\tauext$ help over joint state alone? & RL with $q,\
 E4: noise level & Does training on measured Phase~1 error matter? & Training noise at $1\times$ vs.\ $2\times$ measured error & Same as E2 & Simulated \\
 E5: real insertion & Does the policy transfer to the real Franka? & Spiral vs.\ best RL policy, from Phase~1 estimates & Same as E2 & $\sim$20 real each \\
 E6: end to end & Does the full system work? & Grasp peg $\rightarrow$ localize $\rightarrow$ insert, random box placement & Success per phase and overall, total time & 15--20 real \\
-E7: tighter clearance (stretch) & Does it still work with less clearance? & Clearance reduced to about 0.5\,mm & Success rate & $\sim$10 real \\
+E7: clearance (stretch) & How much does clearance matter? & 0.4\,mm base vs.\ a looser (about 1.5\,mm) base & Success rate & $\sim$10 real \\
 \bottomrule
 \end{tabularx}
 \end{table*}
@@ -240,7 +251,7 @@ Element & Design \\
 \midrule
 Simulator & MuJoCo with the Menagerie~\cite{menagerie2022} Franka Panda; 1\,ms timestep, as mjfit recommends \\
 Peg model & From the team's CAD as two convex pieces: a box for the square top and a cylinder with a 1\,mm chamfer for the shaft \\
-Box model & mjfit plate with a circular hole; hole offset from the box centre uniform within $R$ \\
+Box model & $126.7\times169\times50.8$\,mm block with a 25.4\,mm chamfered through-hole (0.4\,mm clearance), built with mjfit; hole offset from the box centre uniform within $R$ \\
 Start state & Peg hovering above the estimated hole; true offset sampled from Phase~1's measured error, inflated about $1.5\times$; small grasp offset and tilt \\
 Observation & 0.3--0.6\,s history of $q$, $\dot q$, $\tauext$, plus the estimated hole centre relative to the peg tip \\
 Action & End-effector position deltas $(x,y,z)$ to Cartesian impedance control at 20--50\,Hz; no rotation \\
@@ -337,11 +348,12 @@ safety rules: never alone, and one person always on the emergency stop.
 \toprule
 Risk & Effect & Mitigation \\
 \midrule
+Printed hole comes out undersized & Peg does not fit at 0.4\,mm clearance & Print a short test ring of the hole first; adjust the CAD hole diameter to the measured print error \\
 Peg slips or tilts in the gripper during probing & Peg axis offset changes, so every wall point is off & Square top seated against the fingers; high grip force; re-check against the table between phases \\
 Tape lets the box shift under side probes & Box estimate drifts & Strong tape or clamps; low stiffness and speed; probe sides before the top \\
 Phantom contacts in $\tauext$ from model error & False contact points corrupt the filter & Move slowly; calibrate thresholds on day 1; require the threshold to hold for several samples \\
 Hole-search strategy not settled early & Phase~1 slips; Phase~2 lacks real error numbers & Choose the strategy by day 3; until then Phase~2 trains on the guessed $\pm5$\,mm range \\
-Insertion jams (flat end face, 1\,mm chamfer) & Real insertions fail at tight clearance & Low rotational stiffness so the peg can self-align; start at 1.5\,mm clearance; the policy sees $\tauext$ and can learn to wiggle \\
+Insertion jams (0.4\,mm clearance, flat end face) & Real insertions fail & Low rotational stiffness so the peg can self-align; start on a looser base if needed; the policy sees $\tauext$ and can learn to wiggle \\
 Policy fails to transfer from simulation & No real RL result & Policy only corrects the spiral, so the spiral still works; report the gap; tune impedance gains to match simulation \\
 Little robot time (robot shared by 2--3 groups) & Real trials cut short & Develop Phase~2 entirely in simulation; book robot slots in week one \\
 \bottomrule
