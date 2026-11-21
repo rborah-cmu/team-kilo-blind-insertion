@@ -9,7 +9,7 @@ from .common import (
 )
 from .contact import ContactDetector
 from .hole_filter import HoleSearchFilter
-from .search import generate_snake_waypoints, search_line_from
+from .search import generate_snake_waypoints, get_ray_intersection
 
 __all__ = [
     "ContactDetector",
@@ -20,5 +20,5 @@ __all__ = [
     "TABLETOP_HEIGHT",
     "VIRTUAL_PROBE_LENGTH",
     "generate_snake_waypoints",
-    "search_line_from",
+    "get_ray_intersection",
 ]
