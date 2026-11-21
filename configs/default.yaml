@@ -28,6 +28,17 @@ contact:
   debounce_samples: 5          # threshold must hold this many consecutive samples
   probe_speed: 0.015           # m/s
 
+snake_search:                  # initial plate sweep; see kilo/localization/common.py
+  corners:                     # rectangle in the robot base frame, metres
+    - [0.20, -0.20]
+    - [0.70, -0.20]
+    - [0.70, 0.20]
+    - [0.20, 0.20]
+  tabletop_height: 0.40        # z of the tabletop
+  ee_float_height: 0.03        # height above the tabletop while searching
+  virtual_probe_length: 0.047625  # shaft length + half the square top
+  force_threshold: 2.0         # N, Cartesian; distinct from contact.tau_ext_threshold
+
 hole_search:
   num_particles: 4000
   drop_depth: 0.002            # tip this far below the top surface counts as "in the hole"

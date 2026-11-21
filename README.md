@@ -47,6 +47,7 @@ Status of each module:
 | `localization/contact.py` | Working: debounced threshold detector | Phase 1 |
 | `localization/hole_filter.py` | Working disc-prior filter; its press model is a placeholder until the hole strategy is chosen | Phase 1 |
 | `localization/box_filter.py` | Stub | Phase 1 |
+| `localization/search.py` | Stub: snake-search waypoints over the plate workspace | Phase 1 |
 | `insertion/spiral.py` | Working: Archimedean spiral waypoints | Phase 2 |
 | `insertion/env.py` | Stub | Phase 2 |
 | `sim/scene.py` | Stub | Phase 2 |
