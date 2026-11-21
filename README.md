@@ -67,6 +67,20 @@ python -m pytest tests
 
 ## Simulation
 
+Run the tactile localization demo from the repository root:
+
+```bash
+python scripts/localize.py
+python scripts/localize.py --headless
+python scripts/localize.py --headless --box 0.52 0.02 0.30
+```
+
+The arm starts at the first search corner, sweeps until contact, then probes
+from three more directions. It prints the plate center in world XY meters and
+the orientation of its local x axis in degrees modulo 180. The optional box
+pose sets the simulated center in meters and yaw in radians. Keep the plate
+and enough clearance for the probe inside the search rectangle.
+
 ![Scene overview](docs/scene_overview.png)
 
 `kilo/sim/scene.py` builds the MuJoCo scene from the course's Lab 3 model

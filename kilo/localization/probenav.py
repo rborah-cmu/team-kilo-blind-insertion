@@ -5,13 +5,13 @@ import time
 import mujoco
 import numpy as np
 
-from kilo.config import load_config
 from kilo.sim.control import ARM_DOF, HOME_QPOS
 from kilo.sim.scene import TABLE_TOP_Z
 
 from .common import (
     FORCE_THRESHOLD, POS_EPS, PROBE_LOOKAHEAD, SEARCH_MODE_HEIGHT,
-    SEARCH_SPACE_CORNERS, TRAVEL_MODE_HEIGHT, VIRTUAL_PROBE_LENGTH,
+    SEARCH_SPACE_CORNERS, SEARCH_SPEED, TRAVEL_MODE_HEIGHT, TRAVEL_SPEED,
+    VIRTUAL_PROBE_LENGTH,
 )
 from .search import generate_ray_probe_waypoints
 
@@ -81,7 +81,7 @@ def _move(target, model, data, viewer, detect_contact, max_time):
     deadline = data.time + max_time
     next_frame = data.time
     wall_start, sim_start = time.monotonic(), data.time
-    speed = load_config()["contact"]["probe_speed"]
+    speed = SEARCH_SPEED if detect_contact else TRAVEL_SPEED
 
     while data.time < deadline:
         position = data.site_xpos[site].copy()
@@ -119,7 +119,7 @@ def probemove(
     on the probe in world coordinates, suitable for np.array([position, force]).
     Height constants describe the grasp centre; control uses the actual peg tip.
     Heights are relative to the simulation's TABLE_TOP_Z. Target advancement
-    uses contact.probe_speed from the config, capped by PROBE_LOOKAHEAD.
+    uses SEARCH_SPEED, capped by PROBE_LOOKAHEAD.
     The caller owns the scene, initial pose, gripper command, and viewer.
     """
     tip_height = TABLE_TOP_Z + SEARCH_MODE_HEIGHT - VIRTUAL_PROBE_LENGTH
@@ -134,7 +134,8 @@ def travelmove(
     """Lift, travel to the ray's start wall, then lower to search height.
 
     Returns ``(start_xy, end_xy)``; pass end_xy to probemove for the next sweep.
-    Each leg has its own simulation time limit. Travel ignores probe contact.
+    Each leg uses TRAVEL_SPEED and has its own simulation time limit.
+    Travel ignores probe contact.
     """
     mujoco.mj_forward(model, data)
     position = data.site_xpos[model.site("peg_tip").id].copy()

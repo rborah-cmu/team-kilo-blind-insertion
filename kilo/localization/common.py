@@ -8,13 +8,13 @@ import numpy as np
 
 # The corners of the search space to probe in, in meters.
 SEARCH_SPACE_CORNERS = np.array([
-    [0.20, -0.20],
+    [0.32, -0.20],
     [0.70, -0.20],
     [0.70, 0.20],
-    [0.20, 0.20],
+    [0.32, 0.20],
 ])
 
-TABLETOP_HEIGHT = 0.40  # meters | the z coordinate of the tabletop
+TABLETOP_HEIGHT = 0.0001  # meters | the z coordinate of the tabletop
 SEARCH_MODE_OFFSET = 0.03  # meters | the z coordinate above the tabletop to search at
 TRAVEL_MODE_OFFSET = 0.10 # meters | the z coordinate above the tabletop to freely traverse over the plate
 
@@ -27,6 +27,9 @@ VIRTUAL_PROBE_LENGTH = (38.10 + 19.05 / 2) / 1000  # meters
 # When switching between modes, simply move vertically to the desired height
 SEARCH_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + SEARCH_MODE_OFFSET
 TRAVEL_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + TRAVEL_MODE_OFFSET
+
+SEARCH_SPEED = 0.015  # m/s during contact sensing
+TRAVEL_SPEED = 0.030  # m/s during lift, traverse, and descent
 
 FORCE_THRESHOLD = 2.0  # Newtons | Cartesian force that counts as hitting a barrier
 

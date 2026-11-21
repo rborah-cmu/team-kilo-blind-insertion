@@ -1,7 +1,7 @@
 """Plan the initial snake pattern that finds the plate by touch.
 
 The probe and the pin are the same part. Sweep the workspace in
-``common.SEARCH_SPACE_CORNERS`` at ``EE_FLOAT_HEIGHT`` above the tabletop,
+``common.SEARCH_SPACE_CORNERS`` at ``SEARCH_MODE_OFFSET`` above the tabletop,
 and treat a Cartesian force above ``FORCE_THRESHOLD`` as contact.
 """
 
@@ -54,7 +54,7 @@ def generate_ray_probe_waypoints(
     """
     ray = np.asarray(ray, dtype=float)
     start_waypoint = get_ray_intersection(ray, bounding_box)
-    end_waypoint = get_ray_intersection(np.array([start_waypoint, -ray[1]]), bounding_box)
+    end_waypoint = get_ray_intersection(np.array([ray[0], -ray[1]]), bounding_box)
     return start_waypoint, end_waypoint
 
 def get_ray_intersection(
