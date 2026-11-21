@@ -15,10 +15,17 @@ SEARCH_SPACE_CORNERS = np.array([
 ])
 
 TABLETOP_HEIGHT = 0.40  # meters | the z coordinate of the tabletop
-EE_FLOAT_HEIGHT = 0.03  # meters | the z coordinate above the tabletop to search at
+SEARCH_MODE_OFFSET = 0.03  # meters | the z coordinate above the tabletop to search at
+TRAVEL_MODE_OFFSET = 0.10 # meters | the z coordinate above the tabletop to freely traverse over the plate
 
 # Bottom of the probe to the middle of the grasp region:
 # shaft length (38.10 mm) plus half the square top (19.05 mm).
 VIRTUAL_PROBE_LENGTH = (38.10 + 19.05 / 2) / 1000  # meters
+
+# When searching/probing, the EE height should be SEARCH_MODE_HEIGHT
+# When traveling, e.g. going to the other side of the plate, the EE height should be TRAVEL_MODE_HEIGHT
+# When switching between modes, simply move vertically to the desired height
+SEARCH_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + SEARCH_MODE_OFFSET
+TRAVEL_MODE_HEIGHT = VIRTUAL_PROBE_LENGTH + TRAVEL_MODE_OFFSET
 
 FORCE_THRESHOLD = 2.0  # Newtons | Cartesian force that counts as hitting a barrier

@@ -42,31 +42,37 @@ def generate_snake_waypoints(spacing: float) -> list[np.ndarray]:
         waypoints.extend([far, near] if i % 2 == 0 else [near, far])
     return waypoints
 
+def generate_ray_probe_waypoints(
+    ray: np.ndarray, bounding_box: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return two wall waypoints spanning the ray's line through the box.
+
+    ray: np.array([[origin_x, origin_y], [direction_x, direction_y]])
+    The collision origin is inside the box and the direction is nonzero.
+    Start at the forward wall intersection, then probe to the opposite wall.
+    """
+    ray = np.asarray(ray, dtype=float)
+    start_waypoint = get_ray_intersection(ray, bounding_box)
+    end_waypoint = get_ray_intersection(np.array([start_waypoint, -ray[1]]), bounding_box)
+    return start_waypoint, end_waypoint
 
 def get_ray_intersection(
     ray: np.ndarray, bounding_box: np.ndarray
 ) -> np.ndarray | None:
-    """Return the nearest forward intersection with the rectangle boundary.
+    """Return the nearest strictly forward intersection with the box boundary.
 
-    ``ray`` is ``[origin_xy, direction_xy]``; the direction need not be a unit
-    vector. ``bounding_box`` contains the four axis-aligned rectangle corners,
-    as in ``common.SEARCH_SPACE_CORNERS``. An interior origin returns the exit
-    point; an origin on the boundary returns itself. A missed box returns None.
+    ray: np.array([[origin_x, origin_y], [direction_x, direction_y]])
+    bounding_box: as defined in common.SEARCH_SPACE_CORNERS
+    
+    An interior or boundary origin returns the exit point ahead of it.
+    Boundary rays pointing outward return None, as do rays missing the box.
     """
     ray = np.asarray(ray, dtype=float)
     bounding_box = np.asarray(bounding_box, dtype=float)
-    if ray.shape != (2, 2) or not np.isfinite(ray).all():
-        raise ValueError("ray must contain a finite 2D origin and direction")
-    if bounding_box.shape != (4, 2) or not np.isfinite(bounding_box).all():
-        raise ValueError("bounding_box must contain four finite 2D corners")
 
     origin, direction = ray
-    if not np.any(direction):
-        raise ValueError("ray direction must be nonzero")
     lower = bounding_box.min(axis=0)
     upper = bounding_box.max(axis=0)
-    if np.any(lower >= upper):
-        raise ValueError("bounding_box must have positive width and height")
 
     # Intersect the ray's parameter intervals for the x and y slabs.
     t_enter, t_exit = -np.inf, np.inf
@@ -80,10 +86,8 @@ def get_ray_intersection(
         t_enter = max(t_enter, min(t1, t2))
         t_exit = min(t_exit, max(t1, t2))
 
-    if t_enter > t_exit or t_exit < 0:
+    if t_enter > t_exit or t_exit <= 0:
         return None
     inside = np.all((lower <= origin) & (origin <= upper))
-    if inside and np.any((origin == lower) | (origin == upper)):
-        return origin.copy()
     t = t_exit if inside else t_enter
     return origin + t * direction
