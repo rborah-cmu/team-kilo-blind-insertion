@@ -14,7 +14,7 @@ from kilo.localization.common import SEARCH_MODE_OFFSET
 from kilo.localization.probenav import probemove, travelmove
 from kilo.localization.search import generate_snake_waypoints
 from kilo.sim.control import GRIPPER_ACTUATOR, solve_ik
-from kilo.sim.scene import TABLE_TOP_Z, build_scene
+from kilo.sim.scene import TABLE_TOP_Z, build_scene, sample_box_pose
 
 
 def run(model, data, viewer, waypoints):
@@ -74,8 +74,13 @@ def main():
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--box", nargs=3, type=float, default=(.50, 0., 0.),
                         metavar=("X", "Y", "YAW_RAD"))
+    parser.add_argument("--seed", type=int, help="random plate pose from this seed (overrides --box)")
     args = parser.parse_args()
-    model = build_scene(box_xy=args.box[:2], box_yaw=args.box[2])
+    box_xy, box_yaw = args.box[:2], args.box[2]
+    if args.seed is not None:
+        box_xy, box_yaw = sample_box_pose(seed=args.seed)
+        print(f"Seed {args.seed}: plate at ({box_xy[0]:.4f}, {box_xy[1]:.4f}) m, yaw {np.degrees(box_yaw):.1f} deg")
+    model = build_scene(box_xy=box_xy, box_yaw=box_yaw)
     data = mujoco.MjData(model)
     points = generate_snake_waypoints(.06)
     q, error = solve_ik(model, "peg_tip", np.r_[points[0], TABLE_TOP_Z + SEARCH_MODE_OFFSET],
