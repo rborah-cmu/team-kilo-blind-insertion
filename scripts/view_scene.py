@@ -5,6 +5,7 @@ Examples:
     python scripts/view_scene.py --mode free          # loose peg dropped into the hole
     python scripts/view_scene.py --box 0.45 0.05 0.3  # base at x, y (m) and yaw (rad)
     python scripts/view_scene.py --random             # base at a random pose in the search area
+    python scripts/view_scene.py --seed 7             # the same random pose every time
     python scripts/view_scene.py --render scene.png   # save an image instead
 """
 
@@ -29,15 +30,17 @@ def main() -> None:
     ap.add_argument("--mode", choices=["hand", "free", "none"], default="hand")
     ap.add_argument("--box", type=float, nargs=3, metavar=("X", "Y", "YAW"), default=(0.5, 0.0, 0.0))
     ap.add_argument("--random", action="store_true", help="random base pose inside the search rectangle (overrides --box)")
+    ap.add_argument("--seed", type=int, help="seed for a repeatable random base pose (implies --random)")
     ap.add_argument("--height", type=float, default=0.03, help="peg tip height above the hole (m)")
     ap.add_argument("--render", metavar="PNG", help="save an image instead of opening the viewer")
     args = ap.parse_args()
 
     cfg = load_config()
     box_xy, box_yaw = args.box[:2], args.box[2]
-    if args.random:
-        box_xy, box_yaw = sample_box_pose(cfg)
-        print(f"base at x={box_xy[0]:.3f} m, y={box_xy[1]:.3f} m, yaw={np.degrees(box_yaw):.1f} deg")
+    if args.random or args.seed is not None:
+        box_xy, box_yaw = sample_box_pose(cfg, seed=args.seed)
+        print(f"base at x={box_xy[0]:.3f} m, y={box_xy[1]:.3f} m, yaw={np.degrees(box_yaw):.1f} deg"
+              f" (seed {args.seed})")
     model = build_scene(cfg, peg_mode=args.mode, box_xy=box_xy, box_yaw=box_yaw, peg_pos=(0, 0, 1))
     data = mujoco.MjData(model)
     data.qpos[:7] = HOME_QPOS

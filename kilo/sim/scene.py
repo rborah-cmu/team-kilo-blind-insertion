@@ -138,12 +138,15 @@ def site_pos(model: mujoco.MjModel, data: mujoco.MjData, name: str) -> np.ndarra
     return data.site_xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)].copy()
 
 
-def sample_box_pose(cfg: dict | None = None, margin: float = 0.03) -> tuple[np.ndarray, float]:
+def sample_box_pose(
+    cfg: dict | None = None, margin: float = 0.03, seed: int | None = None
+) -> tuple[np.ndarray, float]:
     """Random base pose whose whole footprint lies inside the snake-search rectangle.
 
     The yaw is uniform over a full turn (the off-centre hole makes every angle
     distinct). The centre is then uniform over the positions that keep the
-    rotated block at least ``margin`` inside ``snake_search.corners``.
+    rotated block at least ``margin`` inside ``snake_search.corners``. The same
+    ``seed`` always gives the same pose; ``None`` gives a fresh one each call.
 
     Returns:
         (box_xy, box_yaw), ready for ``build_scene(cfg, box_xy=..., box_yaw=...)``.
@@ -153,7 +156,7 @@ def sample_box_pose(cfg: dict | None = None, margin: float = 0.03) -> tuple[np.n
     lower, upper = corners.min(axis=0), corners.max(axis=0)
     hx, hy = cfg["box"]["size"][0] / 2.0, cfg["box"]["size"][1] / 2.0
 
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     yaw = rng.uniform(0.0, 2.0 * np.pi)
     c, s = abs(np.cos(yaw)), abs(np.sin(yaw))
     half_extent = np.array([hx * c + hy * s, hx * s + hy * c])  # rotated footprint
