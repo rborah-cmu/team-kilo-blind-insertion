@@ -4,6 +4,7 @@ Examples:
     python scripts/view_scene.py                      # peg in hand, above the hole
     python scripts/view_scene.py --mode free          # loose peg dropped into the hole
     python scripts/view_scene.py --box 0.45 0.05 0.3  # base at x, y (m) and yaw (rad)
+    python scripts/view_scene.py --random             # base at a random pose in the search area
     python scripts/view_scene.py --render scene.png   # save an image instead
 """
 
@@ -20,19 +21,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kilo.config import load_config  # noqa: E402
 from kilo.sim.control import GRIPPER_ACTUATOR, HOME_QPOS, JointPD, solve_ik  # noqa: E402
-from kilo.sim.scene import build_scene, site_pos  # noqa: E402
+from kilo.sim.scene import build_scene, sample_box_pose, site_pos  # noqa: E402
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--mode", choices=["hand", "free", "none"], default="hand")
     ap.add_argument("--box", type=float, nargs=3, metavar=("X", "Y", "YAW"), default=(0.5, 0.0, 0.0))
+    ap.add_argument("--random", action="store_true", help="random base pose inside the search rectangle (overrides --box)")
     ap.add_argument("--height", type=float, default=0.03, help="peg tip height above the hole (m)")
     ap.add_argument("--render", metavar="PNG", help="save an image instead of opening the viewer")
     args = ap.parse_args()
 
     cfg = load_config()
-    model = build_scene(cfg, peg_mode=args.mode, box_xy=args.box[:2], box_yaw=args.box[2], peg_pos=(0, 0, 1))
+    box_xy, box_yaw = args.box[:2], args.box[2]
+    if args.random:
+        box_xy, box_yaw = sample_box_pose(cfg)
+        print(f"base at x={box_xy[0]:.3f} m, y={box_xy[1]:.3f} m, yaw={np.degrees(box_yaw):.1f} deg")
+    model = build_scene(cfg, peg_mode=args.mode, box_xy=box_xy, box_yaw=box_yaw, peg_pos=(0, 0, 1))
     data = mujoco.MjData(model)
     data.qpos[:7] = HOME_QPOS
     mujoco.mj_forward(model, data)

@@ -136,3 +136,28 @@ def build_scene(cfg: dict | None = None, **kwargs) -> mujoco.MjModel:
 
 def site_pos(model: mujoco.MjModel, data: mujoco.MjData, name: str) -> np.ndarray:
     return data.site_xpos[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)].copy()
+
+
+def sample_box_pose(cfg: dict | None = None, margin: float = 0.03) -> tuple[np.ndarray, float]:
+    """Random base pose whose whole footprint lies inside the snake-search rectangle.
+
+    The yaw is uniform over a full turn (the off-centre hole makes every angle
+    distinct). The centre is then uniform over the positions that keep the
+    rotated block at least ``margin`` inside ``snake_search.corners``.
+
+    Returns:
+        (box_xy, box_yaw), ready for ``build_scene(cfg, box_xy=..., box_yaw=...)``.
+    """
+    cfg = cfg or load_config()
+    corners = np.asarray(cfg["snake_search"]["corners"], dtype=float)
+    lower, upper = corners.min(axis=0), corners.max(axis=0)
+    hx, hy = cfg["box"]["size"][0] / 2.0, cfg["box"]["size"][1] / 2.0
+
+    rng = np.random.default_rng()
+    yaw = rng.uniform(0.0, 2.0 * np.pi)
+    c, s = abs(np.cos(yaw)), abs(np.sin(yaw))
+    half_extent = np.array([hx * c + hy * s, hx * s + hy * c])  # rotated footprint
+    lo, hi = lower + margin + half_extent, upper - margin - half_extent
+    if np.any(lo > hi):
+        raise ValueError("block does not fit inside the search rectangle with this margin")
+    return rng.uniform(lo, hi), float(yaw)
