@@ -11,8 +11,11 @@ logs/
 runs/
 checkpoints/
 wandb/
-*.zip
+models/
 data/raw/
+
+# CAD exports: keep the extracted files under cad/, not the zip
+cad/*.zip
 
 # LaTeX build files
 proposal/*.aux

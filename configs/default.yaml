@@ -1,9 +1,12 @@
 # Shared parameters. Units: metres, seconds, newton-metres.
 # Values marked TBD are placeholders until the team decides them.
 
-peg:
-  shaft_radius: 0.004          # TBD
-  shaft_length: 0.06           # TBD
+peg:                           # from cad/peg (see cad/peg/README.md)
+  top_size: [0.025, 0.025, 0.01905]  # square top, gripped
+  shaft_radius: 0.0125         # 25 mm diameter cylinder
+  shaft_length: 0.0381         # including the chamfer
+  chamfer: 0.001               # 1 mm x 45 deg at the tip
+  mass: 0.025                  # TBD: weigh the printed peg (URDF mass is wrong)
   tip_offset_from_flange: 0.15 # calibrate once after grasp (Phase 1 step 1)
   holder_pose: [0.45, -0.25, 0.10, 0.0]  # x, y, z, yaw in robot base frame; TBD
 
@@ -14,8 +17,8 @@ box:
     y: [-0.15, 0.15]
 
 hole:
-  radius: 0.005                # TBD
-  clearance: 0.0015            # 1-2 mm to start, tighten toward 0.5 mm
+  clearance: 0.0015            # diametral: hole diameter = 25 mm + this; 1-2 mm to start, tighten toward 0.5 mm
+  radius: 0.01325              # = shaft_radius + clearance / 2
   max_offset_from_center: 0.02 # R: hole lies within this radius of the box top centre; TBD
 
 contact:
