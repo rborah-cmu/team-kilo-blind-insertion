@@ -129,8 +129,17 @@ def build_scene_xml(
     return xml
 
 
-def build_scene(cfg: dict | None = None, **kwargs) -> mujoco.MjModel:
-    """Compile the scene; keyword arguments are passed to :func:`build_scene_xml`."""
+def build_scene(cfg: dict | None = None, seed: int | None = None, **kwargs) -> mujoco.MjModel:
+    """Compile the scene; keyword arguments are passed to :func:`build_scene_xml`.
+
+    With ``seed``, the base pose comes from ``sample_box_pose(cfg, seed=seed)``,
+    so the same seed always builds the same scene; don't also pass ``box_xy``
+    or ``box_yaw``.
+    """
+    if seed is not None:
+        if "box_xy" in kwargs or "box_yaw" in kwargs:
+            raise ValueError("pass either seed or box_xy/box_yaw, not both")
+        kwargs["box_xy"], kwargs["box_yaw"] = sample_box_pose(cfg, seed=seed)
     return mujoco.MjModel.from_xml_string(build_scene_xml(cfg, **kwargs))
 
 
