@@ -36,7 +36,9 @@ kilo/
   sim/            MuJoCo scene construction (Panda + peg + box)
   robot/          Real-robot interface (wraps the course control stack)
 configs/          Shared parameters (hole radius R, clearance, thresholds)
-tests/            Unit tests for the pure-Python pieces
+artifacts/        Published policy checkpoint, config and evaluation summary
+scripts/          Training, evaluation, replay and localization entry points
+tests/            Unit and MuJoCo integration tests
 proposal/         LaTeX proposal; grows into the final report
 ```
 
@@ -44,12 +46,10 @@ Status of each module:
 
 | Module | Status | Owner |
 | --- | --- | --- |
-| `localization/contact.py` | Working: debounced threshold detector | Phase 1 |
-| `localization/hole_filter.py` | Working disc-prior filter; its press model is a placeholder until the hole strategy is chosen | Phase 1 |
-| `localization/box_filter.py` | Stub | Phase 1 |
-| `localization/search.py` | Stub: snake-search waypoints over the plate workspace | Phase 1 |
+| `localization/probenav.py`, `localization/search.py` | Tactile navigation and search simulation | Phase 1 |
+| `localization/archive/` | Earlier contact and particle-filter implementations | Phase 1 |
 | `insertion/spiral.py` | Working: Archimedean spiral waypoints | Phase 2 |
-| `insertion/env.py` | Stub | Phase 2 |
+| `insertion/env.py` | Gymnasium insertion environment with torque-history observations and bounded spiral residuals | Phase 2 |
 | `sim/scene.py`, `sim/geometry.py` | Working: Panda + table + shelves, peg, base with hole | Phase 2 |
 | `sim/control.py` | Working: IK and gravity-compensated joint PD (placeholder for impedance control) | Phase 2 |
 | `robot/interface.py` | Abstract interface only | Phase 1 |
@@ -61,7 +61,7 @@ Python 3.10 or newer.
 ```bash
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 python -m pytest tests
 ```
 
@@ -115,6 +115,160 @@ inserts it when aligned, and jams when 2 mm off (the case Phase 2 is for).
 | Peg over the hole | Base from above |
 | --- | --- |
 | ![Peg close-up](docs/scene_peg_closeup.png) | ![Base top](docs/scene_base_top.png) |
+
+## PPO insertion training
+
+Start v4 **fresh** from the repository root. The earlier checkpoints use a
+different observation space and controller and cannot be resumed into v4:
+
+```bash
+.venv/bin/python scripts/train_insertion.py \
+  --envs 8 --timesteps 2000000 --output-dir runs/insertion_v4
+```
+
+The trained v4 policy and its exact configuration are included in
+`artifacts/insertion_v4/`. The bundle contains one best checkpoint (~2.2 MB),
+`config.yaml`, the training version manifest and a compact comparison summary.
+Intermediate checkpoints, logs, the venv and generated plots remain ignored.
+No training or model download is needed to replay it.
+
+### Watch the included model
+
+On macOS, use the wrapper to handle project paths containing spaces:
+
+```bash
+sh scripts/watch_insertion.sh --seed 40000 --episodes 3
+```
+
+On Linux, use `.venv/bin/python scripts/watch_insertion.py` with the same flags.
+Each seed replays the baseline first, then RL with identical box placement,
+estimate error and grasp perturbation. The window labels the controller and
+insertion depth; the terminal prints completion time and force. Close the
+window to stop. Use `--mode policy`, `--mode baseline`, or `--speed 0.5` for
+slow motion. To view a new local training run, pass `--run-dir runs/insertion_v4`.
+For a non-graphical smoke check, use `--headless --episodes 1`.
+
+### Measured performance
+
+The selected checkpoint is from 2,000,000 training steps. On 50 paired unseen
+starts (seeds 40000–40049), using deterministic actions:
+
+| Metric | Scripted baseline | Script + RL |
+| --- | ---: | ---: |
+| Success | 50/50 | 50/50 |
+| Mean insertion time | 16.40 s | 14.09 s |
+| Mean episode peak contact load | 28.24 N | 28.60 N |
+| Maximum contact load | 46.99 N | 58.73 N |
+
+RL was faster on 36/50 starts: mean saving 2.31 s (14.1%), paired bootstrap
+95% interval 1.09–3.60 s. These trials support a simulation speed improvement,
+not improved force behavior or real-world reliability. The baseline already
+solves this test set; RL learns bounded corrections, not the entire search.
+See [`comparison.json`](artifacts/insertion_v4/comparison.json).
+
+Reproduce the comparison without training (outputs stay local under `runs/`):
+
+```bash
+.venv/bin/python scripts/evaluate_insertion.py \
+  --model artifacts/insertion_v4/best_model.zip --episodes 50 --seed 40000 \
+  --output runs/insertion_v4/test_policy.json
+.venv/bin/python scripts/evaluate_insertion.py \
+  --config artifacts/insertion_v4/config.yaml --episodes 50 --seed 40000 \
+  --output runs/insertion_v4/test_baseline.json
+.venv/bin/python scripts/compare_insertion.py --run-dir runs/insertion_v4
+```
+
+This produces `comparison.json` and `comparison.png` alongside the per-trial
+results. Published software versions are recorded in the bundle's
+`manifest.json`; results may change with physics-library versions. The model
+was trained with Python 3.10, MuJoCo 3.17.0, SB3 2.9.2 and Torch 2.14.1.
+
+### Environment and training details
+
+- The reference first touches down, then searches with limited downward target
+  displacement. It freezes lateral search on entry and uses compliant
+  roll/pitch alignment while seating. The policy still has only three position
+  actions, as in the proposal. Search stiffness is 600 N/m laterally, insertion
+  stiffness 150 N/m, and roll/pitch stiffness 2 Nm/rad.
+- Actions are corrections of at most ±1 mm in x/y and ±0.5 mm in z, with a
+  5 mm/s slew limit. The initial deterministic policy produces zero correction.
+- The actor receives **30 frames × 42 features** (0.6 s at 50 Hz): q, dq,
+  estimated external joint torques, nominal tool pose/twist, estimated hole
+  displacement, previous action, target tracking error, and reference state.
+  The actual randomized peg pose is not supplied to the actor or controller.
+- An asymmetric critic additionally gets true relative position, peg axis,
+  contact load and remaining time during training. The temporal encoder keeps
+  time order and includes the current frame. Tests verify that changing the
+  privileged inputs cannot change the actor's output.
+- Training and validation both use the full ±5 mm error distribution. Each
+  episode is capped at **3,000 steps / 60 seconds**. PPO uses gamma 0.999,
+  learning rate 1e-4, 512 steps per worker, batches of 256 and five update epochs.
+- Success requires at least **37.1 mm insertion**, with the tip and shaft axis
+  at the hole opening both within **0.3 mm** of the true center, sustained for
+  **0.1 s**. Success cannot come from the estimated hole position alone.
+
+Rewards are logged separately in each worker's monitor file:
+
+| Term | Definition |
+| --- | --- |
+| Shaping | `gamma * Phi(next) - Phi(now)`, with `Phi = 2*exp(-radial_error/3mm) + 4*clipped_depth_fraction`; terminal success has zero potential |
+| Time | −0.1 per second, or −0.002 per action; −6 at timeout |
+| Excess contact load | −0.02 times the integral of load above 8 N; measured at the physics rate |
+| Action changes | −0.01 times mean squared normalized action change, multiplied by the action timestep; no sustained-action magnitude penalty |
+| Success | +20 once |
+
+At the start, every 200,000 steps, and at completion, the launcher evaluates
+20 fixed validation seeds with deterministic actions. `best_model.zip` is
+selected by success rate, then mean successful insertion time. The step-zero
+evaluation is the same reference without learned corrections. Checkpoints
+are saved every 100,000 steps. The run also saves its configuration, package
+versions, source hashes, reward terms, force peaks and PPO diagnostics. An
+existing run directory is rejected to avoid mixing results.
+
+Watch progress and evaluate the best model on a separate seed set:
+
+```bash
+.venv/bin/python scripts/plot_training.py --watch
+.venv/bin/python scripts/evaluate_insertion.py \
+  --model runs/insertion_v4/best_model.zip --episodes 100 --seed 40000 \
+  --output runs/insertion_v4/heldout_evaluation.json
+```
+
+For a matched baseline, omit `--model`, pass the run's `--config`, and use
+the same seed/episode count. Evaluation does not train the policy.
+
+Assumptions to replace with real measurements before deployment:
+
+- The box is fixed, the hole vertical, and the nominal tool transform calibrated
+  from the reproducible square-top grasp. The simulator rigidly attaches the
+  peg to the hand; it does not model slipping or grip compliance.
+- Phase 1 supplies estimated hole x/y and top-surface height in the robot frame.
+  ±5 mm uniform x/y error is provisional, not measured Phase 1 performance.
+  Fixture height has no independent random error; first-touch detection cancels
+  tool-length bias for the search-to-insertion transition.
+- Grasp translation has 0.5 mm standard deviation per axis, and roll/pitch
+  0.5 degrees, clipped at three standard deviations. A 3 mm nominal hover keeps
+  these perturbations clear of the surface at reset.
+- The nominal dimensions remain 25.0 mm shaft / 25.4 mm hole, with 1 mm
+  chamfers. Printing error is not yet randomized. The reference paper's real
+  pegs had 0.5–1.5 mm clearance **per side**, versus our 0.2 mm, so its success
+  rates are not directly comparable.
+- Controller gains, contact friction, torque-estimator bias/noise, latency and
+  touch threshold need robot measurements. Current sensing is ideal and the
+  default friction is fixed. MuJoCo uses a 1 ms physics step and a 5 ms contact
+  time constant; this is a numerical setting, not identified material stiffness.
+  Bounded target displacement limits spring preload, not impact force: the
+  paired 50-trial policy check had a maximum instantaneous summed normal load of
+  58.73 N. These force predictions need calibration.
+- Training success uses simulator truth. On the robot, completion must be
+  checked from calibrated insertion travel/contact behavior and validated
+  against physically seated trials.
+
+The temporal/asymmetric design follows [Blind Precise Assembly](https://arxiv.org/html/2610.23849v1).
+The decision to start from a functioning controller and learn small corrections
+follows [Residual Reinforcement Learning for Robot Control](https://arxiv.org/abs/1812.03201).
+This implementation does not reproduce the reference paper's auxiliary
+contact-supervision loss or its large-scale training regime.
 
 ## Working together
 

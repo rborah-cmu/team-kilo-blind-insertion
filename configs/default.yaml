@@ -44,9 +44,53 @@ hole_search:
   stop_std: 0.001              # stop refining when estimate std falls below this
 
 insertion:
-  policy_rate_hz: 25
-  history_seconds: 0.4
-  train_noise_xy: 0.005        # +/- 5 mm until Phase 1 error is measured
+  policy_rate_hz: 50
+  history_seconds: 0.6
+  history_frames: 30
+  train_noise_xy: 0.005          # fixed +/-5 mm per axis for training AND evaluation
+  start_clearance: 0.003        # clears the bounded grasp error; avoids initial penetration
+  success_depth: 0.0371
+  success_xy_tolerance: 0.0001
+  success_hold_seconds: 0.10
+  descent_rate: 0.006
+  spiral_pitch: 0.001
+  spiral_max_radius: 0.009      # exceeds sqrt(2)*5 mm error support
+  search_speed: 0.010
+  tracking_tolerance: 0.002
+  capture_depth: 0.0003
+  engagement_depth: 0.003
+  capture_timeout: 1.0
+  touch_force: 0.15            # N, inferred from joint torques; calibrate on the robot
+  touch_samples: 3
+  seating_overtravel: 0.003    # nominal TCP allowance for grasp-length error
+  search_z_lead: 0.001          # caps search spring load near 0.4 N (Kz=400 N/m)
+  insert_z_lead: 0.006
+  search_xy_stiffness: 600.0
+  insert_xy_stiffness: 150.0
+  z_stiffness: 400.0
+  rotation_stiffness: [2.0, 2.0, 10.0]  # compliant roll/pitch lets the chamfers align the shaft
+  cartesian_damping: [30.0, 30.0, 40.0, 2.0, 2.0, 5.0]
+  action_limit_xyz: [0.001, 0.001, 0.0005]
+  residual_speed: 0.005         # slew limit; metres per second
+  max_episode_steps: 3000       # 60 seconds for search plus seating
+  grasp_offset_std: 0.0005
+  grasp_tilt_std_rad: 0.0087
+  grasp_clip_sigma: 3.0
+  ik_tolerance: 0.002
+  time_cost_per_second: 0.10
+  force_cost_per_second: 0.02
+  force_soft_limit: 8.0
+  smoothness_cost_per_second: 0.01
+  success_reward: 20.0
+  ppo_gamma: 0.999
+  ppo_gae_lambda: 0.97
+  num_envs: 8
+  total_timesteps: 2000000
+  ppo_n_steps: 512
+  ppo_batch_size: 256
+  eval_interval: 200000
+  eval_episodes: 20
 
 sim:
   timestep: 0.001             # set in kilo/sim/scene.py; mjfit-style stiff contacts need <= 1 ms
+  contact_time_constant: 0.005 # five physics steps; reduce one-step contact impulses

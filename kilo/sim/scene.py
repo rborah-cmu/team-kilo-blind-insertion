@@ -87,12 +87,13 @@ def build_scene_xml(
     xml = xml.replace("</asset>", "\n".join(meshes) + "\n  </asset>")
 
     # ---- peg ----
+    contact_ref = f'{cfg["sim"].get("contact_time_constant", 0.002):.6g} 1'
     top_half = np.array(peg["top_size"]) / 2.0
     peg_geoms = (
         f'<geom name="peg_top" type="box" size="{_fmt(top_half)}" pos="0 0 {top_half[2]:.6g}" '
-        f'rgba="0.62 0.81 0.93 1" contype="1" conaffinity="1" solref="0.002 1" condim="4" />'
+        f'rgba="0.62 0.81 0.93 1" contype="1" conaffinity="1" solref="{contact_ref}" condim="4" />'
         f'<geom name="peg_shaft" type="mesh" mesh="peg_shaft" rgba="0.62 0.81 0.93 1" '
-        f'contype="1" conaffinity="1" solref="0.002 1" condim="4" />'
+        f'contype="1" conaffinity="1" solref="{contact_ref}" condim="4" />'
         f'<site name="peg_tip" pos="0 0 {-peg["shaft_length"]:.6g}" size="0.002" rgba="1 0 0 1" />'
     )
     peg_inertial = f'<inertial pos="0 0 0" mass="{peg["mass"]:.6g}" diaginertia="5e-6 5e-6 2e-6" />'
@@ -100,7 +101,9 @@ def build_scene_xml(
         # Peg +z points back toward the flange (opposite the hand's z axis); the
         # square top's centre sits at the fingertip centre.
         pos = np.array([0.0, 0.0, HAND_TCP_Z + top_half[2]]) + np.asarray(grasp_offset)
-        peg_body = (f'<body name="peg" pos="{_fmt(pos)}" quat="0 1 0 0">'
+        nominal_tip = [0.0, 0.0, HAND_TCP_Z + top_half[2] + peg["shaft_length"]]
+        peg_body = (f'<site name="peg_tcp" pos="{_fmt(nominal_tip)}" quat="0 1 0 0" size="0.001" rgba="0 0 0 0" />'
+                    f'<body name="peg" pos="{_fmt(pos)}" quat="0 1 0 0">'
                     f'{peg_inertial}{peg_geoms}</body>\n                      ')
         xml = xml.replace('<body name="left_finger"', peg_body + '<body name="left_finger"', 1)
     elif peg_mode == "free":
@@ -109,7 +112,7 @@ def build_scene_xml(
     # ---- base ----
     base_geoms = "".join(
         f'<geom name="base_wedge{i}" type="mesh" mesh="base_wedge{i}" rgba="0.85 0.65 0.35 1" '
-        f'contype="1" conaffinity="1" solref="0.002 1" condim="4" />'
+        f'contype="1" conaffinity="1" solref="{contact_ref}" condim="4" />'
         for i in range(len(wedges))
     )
     base_body = (

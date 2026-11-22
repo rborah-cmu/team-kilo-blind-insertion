@@ -1,0 +1,118 @@
+peg:
+  top_size:
+  - 0.025
+  - 0.025
+  - 0.01905
+  shaft_radius: 0.0125
+  shaft_length: 0.0381
+  chamfer: 0.001
+  mass: 0.025
+  tip_offset_from_flange: 0.15
+  holder_pose:
+  - 0.45
+  - -0.25
+  - 0.1
+  - 0.0
+box:
+  size:
+  - 0.1267
+  - 0.169
+  - 0.0508
+  search_region:
+    x:
+    - 0.35
+    - 0.65
+    y:
+    - -0.15
+    - 0.15
+hole:
+  radius: 0.0127
+  clearance: 0.0004
+  chamfer: 0.001
+  cad_offset:
+  - 0.00262
+  - 0.00302
+  max_offset_from_center: 0.02
+contact:
+  tau_ext_threshold: 1.5
+  debounce_samples: 5
+snake_search:
+  corners:
+  - - 0.32
+    - -0.2
+  - - 0.7
+    - -0.2
+  - - 0.7
+    - 0.2
+  - - 0.32
+    - 0.2
+  tabletop_height: 0.0001
+  ee_float_height: 0.03
+  virtual_probe_length: 0.047625
+  force_threshold: 2.0
+hole_search:
+  num_particles: 4000
+  drop_depth: 0.002
+  stop_std: 0.001
+insertion:
+  policy_rate_hz: 50
+  history_seconds: 0.6
+  history_frames: 30
+  train_noise_xy: 0.005
+  start_clearance: 0.003
+  success_depth: 0.0371
+  success_xy_tolerance: 0.0001
+  success_hold_seconds: 0.1
+  descent_rate: 0.006
+  spiral_pitch: 0.001
+  spiral_max_radius: 0.009
+  search_speed: 0.01
+  tracking_tolerance: 0.002
+  capture_depth: 0.0003
+  engagement_depth: 0.003
+  capture_timeout: 1.0
+  touch_force: 0.15
+  touch_samples: 3
+  seating_overtravel: 0.003
+  search_z_lead: 0.001
+  insert_z_lead: 0.006
+  search_xy_stiffness: 600.0
+  insert_xy_stiffness: 150.0
+  z_stiffness: 400.0
+  rotation_stiffness:
+  - 2.0
+  - 2.0
+  - 10.0
+  cartesian_damping:
+  - 30.0
+  - 30.0
+  - 40.0
+  - 2.0
+  - 2.0
+  - 5.0
+  action_limit_xyz:
+  - 0.001
+  - 0.001
+  - 0.0005
+  residual_speed: 0.005
+  max_episode_steps: 3000
+  grasp_offset_std: 0.0005
+  grasp_tilt_std_rad: 0.0087
+  grasp_clip_sigma: 3.0
+  ik_tolerance: 0.002
+  time_cost_per_second: 0.1
+  force_cost_per_second: 0.02
+  force_soft_limit: 8.0
+  smoothness_cost_per_second: 0.01
+  success_reward: 20.0
+  ppo_gamma: 0.999
+  ppo_gae_lambda: 0.97
+  num_envs: 8
+  total_timesteps: 2000000
+  ppo_n_steps: 512
+  ppo_batch_size: 256
+  eval_interval: 200000
+  eval_episodes: 20
+sim:
+  timestep: 0.001
+  contact_time_constant: 0.005

@@ -1,0 +1,23 @@
+{
+  "episodes": 50,
+  "baseline_successes": 50,
+  "policy_successes": 50,
+  "mean_seconds_baseline_policy": [
+    16.4036,
+    14.090800000000002
+  ],
+  "mean_time_change_seconds": -2.3128,
+  "paired_bootstrap_95_ci_seconds": [
+    -3.604820000000001,
+    -1.08599
+  ],
+  "policy_faster_trials": 36,
+  "mean_peak_load_baseline_policy": [
+    28.236765015146418,
+    28.59812531534564
+  ],
+  "max_peak_load_baseline_policy": [
+    46.99276029476137,
+    58.732369579015625
+  ]
+}

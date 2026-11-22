@@ -1,0 +1,20 @@
+{
+  "seed": 0,
+  "envs": 8,
+  "timesteps": 2000000,
+  "resume": null,
+  "versions": {
+    "mujoco": "3.17.0",
+    "torch": "2.14.1",
+    "stable-baselines3": "2.9.2",
+    "gymnasium": "1.4.0"
+  },
+  "source_hashes": {
+    "kilo/insertion/env.py": "048b711482f517166ffa9d7905ae1b4aa39a561691ed48ebfda0bcc9347de310",
+    "kilo/insertion/reference.py": "e172a216afd7d35e2d8e81b271f955ed9c2eadf0c3ff6d2f55a83ef9159977d8",
+    "kilo/insertion/policy.py": "b55960ead9b7e52093709000193a02da727cf56521a52f34728039bef8da4415",
+    "kilo/insertion/evaluation.py": "7dc372814fc2cd460149a6b1be4b5f2edc5b70e6ef827ac681b5c2fa16ac24bf",
+    "kilo/sim/scene.py": "d932f3de6ff7244c1bfc406df6fc06661149e610554d27c08555b0e05695c139",
+    "scripts/train_insertion.py": "8b85c98e9932dd3ec9e64308f3f5ceb80e2a0355eb2dcf24139a300fb14e960d"
+  }
+}
