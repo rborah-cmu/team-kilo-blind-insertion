@@ -16,7 +16,7 @@ from gymnasium import spaces
 from kilo.config import load_config
 from kilo.insertion.reference import InsertionReference
 from kilo.sim.control import ARM_DOF, HOME_QPOS, solve_ik
-from kilo.sim.scene import build_scene
+from kilo.sim.scene import build_scene, HAND_TCP_Z
 
 FRAME_FEATURES = 42
 PRIVILEGED_FEATURES = 8
@@ -30,6 +30,7 @@ class PegInsertionEnv(gym.Env):
         super().__init__()
         self.cfg = config or load_config()
         self.ins = self.cfg["insertion"]
+        self.contact_grasp = self.cfg.get("grasp", {}).get("mode") == "contact"
         self.use_tau_ext = use_tau_ext
         self.residual = residual
         self.dt = float(self.cfg["sim"]["timestep"])
@@ -55,6 +56,10 @@ class PegInsertionEnv(gym.Env):
         self.base_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "base")
         self.peg_body_pos_nominal = self.model.body_pos[self.peg_body_id].copy()
         self.peg_body_quat_nominal = self.model.body_quat[self.peg_body_id].copy()
+        self.finger_ids = [self.model.body(name).id for name in ("left_finger", "right_finger")]
+        if self.contact_grasp:
+            self.peg_body_pos_nominal = np.array([0., 0., HAND_TCP_Z + self.cfg['peg']['top_size'][2]/2])
+            self.peg_body_quat_nominal = np.array([0., 1., 0., 0.])
         self.peg_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "peg_tip")
         self.control_site_id = self.model.site("peg_tcp").id
         self.hole_site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "hole_top")
@@ -76,6 +81,8 @@ class PegInsertionEnv(gym.Env):
         self.target_position = np.zeros(3)
         self.correction = np.zeros(3)
         self.success_streak = 0
+        self.grip_loss_steps = 0
+        self.peak_slip = 0.
         self.peak_load = 0.0
         self.reward_sums = {}
         self.contact_load = 0.0
@@ -218,11 +225,15 @@ class PegInsertionEnv(gym.Env):
 
         self.reference = InsertionReference(self.ins, self.estimate_xy, self.top_z,
                                              self._site_pos(self.control_site_id))
+        if self.contact_grasp:
+            self._initialize_contact_grasp(start)
         self.target_position = start.copy()
         self.correction[:] = 0.0
         self.success_streak = 0
+        self.grip_loss_steps = 0
+        self.peak_slip = 0.
         self.contact_load = self.peak_load = 0.0
-        self.reward_sums = {key: 0.0 for key in ("shaping", "time", "force", "smoothness", "success")}
+        self.reward_sums = {key: 0.0 for key in ("shaping", "time", "force", "smoothness", "success", "failure")}
         self.step_count = 0
         self.previous_action[:] = 0.0
         self.history[:] = 0.0
@@ -230,6 +241,56 @@ class PegInsertionEnv(gym.Env):
         self.history[:] = initial_frame
         self.previous_potential = self._potential()
         return self._observation(), {"ik_error": ik_error, "estimate_error_xy": estimate_error.copy()}
+
+    def _initialize_contact_grasp(self, target):
+        grasp = self.cfg['grasp']
+        hand = self.model.body('hand').id
+        pos = self.data.xpos[hand] + self.data.xmat[hand].reshape(3, 3) @ self.model.body_pos[self.peg_body_id]
+        quat = np.zeros(4)
+        mujoco.mju_mulQuat(quat, self.data.xquat[hand], self.model.body_quat[self.peg_body_id])
+        self.model.body_pos[self.peg_body_id] = [0., 0., 1.]
+        self.model.body_quat[self.peg_body_id] = [1., 0., 0., 0.]
+        joint = self.model.joint('peg_free')
+        qp, qv = joint.qposadr[0], joint.dofadr[0]
+        self.data.qpos[qp:qp+7] = np.r_[pos, quat]
+        self.data.qpos[7:9] = 0.018
+        self.data.ctrl[7] = 0.005
+        self.grip_force = self.rng.uniform(*grasp['force_range_n'])
+        self.grip_friction = self.rng.uniform(*grasp['friction_range'])
+        self.model.actuator_forcerange[7] = [-self.grip_force, self.grip_force]
+        self.model.pair_friction[:, :2] = self.grip_friction
+        self.model.pair_solref[:, 0] = self.rng.uniform(*grasp['contact_time_range'])
+        self._forward()
+        # Initial holder supports the peg while the jaws close; it is removed
+        # before settling and before any policy observation or reward.
+        for k in range(round(grasp['settle_seconds']/self.dt)):
+            if k*self.dt < grasp['supported_seconds']:
+                self.data.qpos[qp:qp+7] = np.r_[pos, quat]
+                self.data.qvel[qv:qv+6] = 0.
+                self._forward()
+            self._controller(target)
+            mujoco.mj_step(self.model, self.data)
+        self._forward()
+        self.initial_grasp_tip = self._relative_grasp_tip()
+        if np.linalg.norm(self._site_pos(self.peg_site_id)-self._site_pos(self.control_site_id)) > .01:
+            raise RuntimeError('Contact grasp failed to settle; inspect gripper parameters')
+
+    def _grip_loads(self):
+        loads = np.zeros(2)
+        wrench = np.zeros(6)
+        for i, contact in enumerate(self.data.contact):
+            bodies = self.model.geom_bodyid[[contact.geom1, contact.geom2]]
+            if self.peg_body_id not in bodies:
+                continue
+            for j, finger in enumerate(self.finger_ids):
+                if finger in bodies:
+                    mujoco.mj_contactForce(self.model, self.data, i, wrench)
+                    loads[j] += max(0., wrench[0])
+        return loads
+
+    def _relative_grasp_tip(self):
+        hand = self.model.body('hand').id
+        return self.data.xmat[hand].reshape(3, 3).T @ (self._site_pos(self.peg_site_id)-self.data.xpos[hand])
 
     def _potential(self):
         tip = self._site_pos(self.peg_site_id)
@@ -244,7 +305,7 @@ class PegInsertionEnv(gym.Env):
         for i in range(self.data.ncon):
             contact = self.data.contact[i]
             bodies = self.model.geom_bodyid[[contact.geom1, contact.geom2]]
-            if self.peg_body_id in bodies:
+            if self.peg_body_id in bodies and not any(body in self.finger_ids for body in bodies):
                 mujoco.mj_contactForce(self.model, self.data, i, wrench)
                 load += max(0.0, wrench[0])
         return load
@@ -289,16 +350,22 @@ class PegInsertionEnv(gym.Env):
         entry = tip + axis * depth / max(axis[2], 1e-6)
         entry_error = float(np.linalg.norm(entry[:2] - self.true_hole_xy))
         tolerance = self.cfg["hole"]["radius"] - self.cfg["peg"]["shaft_radius"] + self.ins["success_xy_tolerance"]
-        seated = depth >= self.ins["success_depth"] and max(radial_error, entry_error) <= tolerance and axis[2] > 0.99
+        slip = float(np.linalg.norm(self._relative_grasp_tip() - self.initial_grasp_tip)) if self.contact_grasp else 0.
+        held = not self.contact_grasp or bool(np.all(self._grip_loads() > .1))
+        self.grip_loss_steps = 0 if held else self.grip_loss_steps + 1
+        self.peak_slip = max(self.peak_slip, slip)
+        dropped = self.contact_grasp and (slip > self.cfg['grasp']['loss_distance'] or self.grip_loss_steps*dt >= .2)
+        seated = held and not dropped and depth >= self.ins["success_depth"] and max(radial_error, entry_error) <= tolerance and axis[2] > 0.99
         self.success_streak = self.success_streak + 1 if seated else 0
         success = self.success_streak >= round(self.ins["success_hold_seconds"] / dt)
         potential = self._potential()
         terms = {
-            "shaping": self.ins["ppo_gamma"] * (0.0 if success else potential) - self.previous_potential,
+            "shaping": self.ins["ppo_gamma"] * (0.0 if success or dropped else potential) - self.previous_potential,
             "time": -self.ins["time_cost_per_second"] * dt,
             "force": -self.ins["force_cost_per_second"] * float(np.maximum(0., np.asarray(loads) - self.ins["force_soft_limit"]).mean()) * dt,
             "smoothness": -self.ins["smoothness_cost_per_second"] * float(np.mean((action - self.previous_action)**2)) * dt,
             "success": self.ins["success_reward"] if success else 0.0,
+            "failure": -self.cfg["grasp"]["drop_penalty"] if dropped else 0.0,
         }
         self.previous_potential = potential
         for key, value in terms.items():
@@ -310,6 +377,6 @@ class PegInsertionEnv(gym.Env):
                 "entry_error": entry_error, "goal_distance": self._goal_distance(),
                 "estimate_error_xy": self.estimate_xy - self.true_hole_xy,
                 "estimate_noise_xy": self.episode_noise_xy, "phase": self.reference.phase,
-                "peak_load_n": self.peak_load}
+                "peak_load_n": self.peak_load, "grasp_slip_m": slip, "peak_grasp_slip_m": self.peak_slip, "dropped": bool(dropped)}
         info.update({"reward_" + key: value for key, value in self.reward_sums.items()})
-        return self._observation(), float(sum(terms.values())), bool(success), bool(self.step_count >= self.max_steps and not success), info
+        return self._observation(), float(sum(terms.values())), bool(success or dropped), bool(self.step_count >= self.max_steps and not (success or dropped)), info

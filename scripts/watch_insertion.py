@@ -17,6 +17,7 @@ from kilo.insertion.env import PegInsertionEnv
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-dir', type=Path, default=Path('artifacts/insertion_v4'))
+    parser.add_argument('--config', type=Path, help='override grasp/environment configuration for transfer checks')
     parser.add_argument('--seed', type=int, default=40000)
     parser.add_argument('--episodes', type=int, default=3)
     parser.add_argument('--mode', choices=['compare', 'baseline', 'policy'], default='compare')
@@ -26,7 +27,7 @@ def main():
     if args.speed <= 0 or args.episodes < 1:
         parser.error('speed and episodes must be positive')
     torch.set_num_threads(1)
-    cfg = load_config(args.run_dir / 'config.yaml')
+    cfg = load_config(args.config or args.run_dir / 'config.yaml')
     model = PPO.load(args.run_dir / 'best_model.zip', device='cpu') if args.mode != 'baseline' else None
     env = PegInsertionEnv(cfg)
     modes = ['baseline', 'policy'] if args.mode == 'compare' else [args.mode]

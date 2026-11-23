@@ -30,6 +30,7 @@ def evaluate(config, model=None, episodes=20, seed=10000, progress=None):
                 'return': episode_return, 'depth_mm': info['depth'] * 1000,
                 'entry_error_mm': info['entry_error'] * 1000,
                 'peak_load_n': float(info['peak_load_n']),
+                'dropped': info['dropped'], 'peak_grasp_slip_mm': 1000*info['peak_grasp_slip_m'],
                 'reward_terms': {k:float(v) for k,v in info.items() if k.startswith('reward_')},
             })
             if progress is not None:

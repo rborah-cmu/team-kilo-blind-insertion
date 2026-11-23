@@ -177,8 +177,8 @@ def main() -> None:
         vec_env_cls=vec_env_cls,
         vec_env_kwargs=vec_env_kwargs,
         monitor_dir=str(output_dir / "monitor"),
-        monitor_kwargs={"info_keywords": ("success", "estimate_noise_xy", "depth", "entry_error", "peak_load_n",
-                                         "reward_shaping", "reward_time", "reward_force", "reward_smoothness", "reward_success")},
+        monitor_kwargs={"info_keywords": ("success", "estimate_noise_xy", "depth", "entry_error", "peak_load_n", "dropped", "peak_grasp_slip_m",
+                                         "reward_shaping", "reward_time", "reward_force", "reward_smoothness", "reward_success", "reward_failure")},
     )
     checkpoint = CheckpointCallback(
         save_freq=max(1, 100_000 // n_envs),

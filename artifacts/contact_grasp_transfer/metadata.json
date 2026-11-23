@@ -1,0 +1,11 @@
+{
+  "purpose": "Transfer evaluation before any contact-grasp training",
+  "seeds": {
+    "first": 50000,
+    "last": 50019
+  },
+  "policy": "artifacts/insertion_v4/best_model.zip",
+  "policy_sha256": "875ddcce7a1c466a0a916dd8f944ad99d672b546fff7fd7c9f23a14f9d562268",
+  "config": "configs/contact_grasp.yaml",
+  "notes": "Both controllers use the same physical-grasp configuration and seeds. No new policy weights were trained. Full configuration and per-trial metrics are embedded in each result file."
+}
