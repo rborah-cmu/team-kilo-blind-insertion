@@ -1,0 +1,224 @@
+[
+ {
+  "seed": 0,
+  "initial_mm": 0.27726385597748865,
+  "initial_deg": 0.1501249526240258,
+  "final_mm": 0.10110519892901297,
+  "final_deg": 0.17214716447330147,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 262.5200000007041,
+  "contacts": 8
+ },
+ {
+  "seed": 8,
+  "initial_mm": 17.430692023152456,
+  "initial_deg": 18.80173179069699,
+  "final_mm": 0.23597402632586656,
+  "final_deg": 0.3237802679928592,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 3,
+    "skipped": 0,
+    "stalled": 1
+   }
+  ],
+  "sim_seconds": 302.739999999753,
+  "contacts": 7
+ },
+ {
+  "seed": 12,
+  "initial_mm": 0.005963955889301665,
+  "initial_deg": 0.02800226574942144,
+  "final_mm": 0.0042513118163908315,
+  "final_deg": 0.03307132598332885,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 304.4399999997128,
+  "contacts": 8
+ },
+ {
+  "seed": 22,
+  "initial_mm": 0.12731268108162314,
+  "initial_deg": 0.15824136904902275,
+  "final_mm": 0.052819324568112266,
+  "final_deg": 0.13858539717310236,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 264.92000000064735,
+  "contacts": 8
+ },
+ {
+  "seed": 26,
+  "initial_mm": 1.5259849464149118,
+  "initial_deg": 1.2869993263732482,
+  "final_mm": 0.03901334909778928,
+  "final_deg": 0.06587837813758313,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 258.6600000007954,
+  "contacts": 8
+ },
+ {
+  "seed": 41,
+  "initial_mm": 20.75543195229064,
+  "initial_deg": 18.36231456935542,
+  "final_mm": 0.14812834393664936,
+  "final_deg": 0.275353011967411,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 3,
+    "skipped": 0,
+    "stalled": 1
+   }
+  ],
+  "sim_seconds": 263.5600000006795,
+  "contacts": 7
+ },
+ {
+  "seed": 46,
+  "initial_mm": 0.03645170496012898,
+  "initial_deg": 0.0656174319647107,
+  "final_mm": 0.01463433340785035,
+  "final_deg": 0.0639298959229393,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 270.32000000051966,
+  "contacts": 8
+ },
+ {
+  "seed": 49,
+  "initial_mm": 29.255997548121293,
+  "initial_deg": 87.015243881115,
+  "final_mm": 0.12171438427980072,
+  "final_deg": 0.37497506921553736,
+  "verify": [
+   {
+    "misses": 1,
+    "top_landings": 1,
+    "new_contacts": 2,
+    "skipped": 0
+   },
+   {
+    "misses": 1,
+    "top_landings": 1,
+    "new_contacts": 2,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 376.8999999979994,
+  "contacts": 10
+ },
+ {
+  "seed": 64,
+  "initial_mm": 0.21498746779576597,
+  "initial_deg": 0.17859948627040012,
+  "final_mm": 0.0777458292983179,
+  "final_deg": 0.12417308178305575,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 263.4200000006828,
+  "contacts": 8
+ },
+ {
+  "seed": 84,
+  "error": "SafetyStop('contact force 21.0 N exceeded the 20 N safety limit')"
+ },
+ {
+  "seed": 89,
+  "initial_mm": 1.4599206697661697,
+  "initial_deg": 2.8195373187490986,
+  "final_mm": 0.6363859602341272,
+  "final_deg": 2.350727170142278,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 342.59999999881046,
+  "contacts": 8
+ },
+ {
+  "seed": 91,
+  "initial_mm": 0.04365300409405883,
+  "initial_deg": 0.03376991870834445,
+  "final_mm": 0.00887962117039378,
+  "final_deg": 0.014717163620844076,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 354.3799999985319,
+  "contacts": 8
+ },
+ {
+  "seed": 94,
+  "initial_mm": 5.108184951988279,
+  "initial_deg": 6.84456424758811,
+  "final_mm": 0.1287292127636324,
+  "final_deg": 1.3237367965576965,
+  "verify": [
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   },
+   {
+    "misses": 0,
+    "top_landings": 0,
+    "new_contacts": 4,
+    "skipped": 0
+   }
+  ],
+  "sim_seconds": 429.27999999676075,
+  "contacts": 12
+ }
+]

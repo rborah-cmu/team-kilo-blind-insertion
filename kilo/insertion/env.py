@@ -173,6 +173,13 @@ class PegInsertionEnv(gym.Env):
         if np.any(low > high):
             raise ValueError("The box does not fit inside the configured search region")
         box_xy = self.rng.uniform(low, high)
+        # Optional overrides for chaining with Phase 1 (scripts/run_end_to_end.py).
+        # The random draws above still happen, so seeded training is unchanged.
+        options = options or {}
+        if "box_xy" in options:
+            box_xy = np.asarray(options["box_xy"], dtype=float)
+        if "box_yaw" in options:
+            box_yaw = float(options["box_yaw"])
         self.model.body_pos[self.base_body_id, :2] = box_xy
         self.model.body_quat[self.base_body_id] = [np.cos(box_yaw / 2), 0., 0., np.sin(box_yaw / 2)]
         self._forward()
@@ -182,6 +189,8 @@ class PegInsertionEnv(gym.Env):
         noise = self.train_noise_xy
         self.episode_noise_xy = float(noise)
         estimate_error = self.rng.uniform(-noise, noise, size=2)
+        if "estimate_xy" in options:
+            estimate_error = np.asarray(options["estimate_xy"], dtype=float) - self.true_hole_xy
         self.estimate_xy = self.true_hole_xy + estimate_error
         top_z = float(self._site_pos(self.hole_site_id)[2])
         self.top_z = top_z

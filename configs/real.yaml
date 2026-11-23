@@ -1,0 +1,56 @@
+# Real-robot settings for the Phase 1 experiments (scripts/real/phase1.py).
+# Units: metres, seconds, newtons, radians. Base frame = robot base (frankapy "world").
+# MEASURE marks values to calibrate in the lab before trusting results.
+
+robot:
+  backend: frankapy            # frankapy (course setup) | pandapy (experimental, see kilo/robot/pandapy_backend.py) | sim
+  robot_num: 1                 # frankapy robot number on this workstation
+  pandapy_hostname: 172.16.0.2 # only for the pandapy backend
+  # Tool frame (between the fingertips, frankapy "franka_tool") to the peg tip, along the tool z axis:
+  # half the square top (9.525 mm) + shaft (38.1 mm). MEASURE with the `table` experiment.
+  probe_length: 0.047625
+  # +1 if get_ee_force_torque() is the force ON the robot, -1 if it is the force the robot applies.
+  # MEASURE with the `table` experiment (it reports which sign makes the table push up).
+  force_sign: 1.0
+  # Finger-axis yaw minus the arm's base azimuth that puts joint 7 mid-range (q7 ~ yaw - azimuth + 2.36).
+  # Probes pick yaw or yaw+180 deg (the gripper is symmetric) to stay within 90 deg of this.
+  wrist_yaw_offset: -2.356
+  home_joints: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+
+workspace:
+  # Rectangle the box may be in. MEASURE: keep it on the clear table area, away from the shelves.
+  search_corners: [[0.32, -0.20], [0.70, -0.20], [0.70, 0.20], [0.32, 0.20]]
+  margin: 0.03                 # targets may go this far outside the rectangle
+  table_z: null                # MEASURE with the `table` experiment; localize refuses to run while null
+  search_offset: 0.015         # peg tip height above the table while probing (box top is 50.8 mm)
+  travel_offset: 0.10          # peg tip height above the table while travelling
+  snake_spacing: 0.06          # distance between sweep passes
+
+motion:
+  search_speed: 0.010          # m/s while probing sideways
+  descent_speed: 0.010         # m/s for guarded descents
+  travel_speed: 0.05           # m/s for free-space moves
+  # false: one wrist angle for the whole search (default; avoids joint-7 limits). true: turn the
+  # finger axis to follow each probe, as in the simulation scripts. Check grasp slip with `touch`.
+  align_wrist: false
+  stream_hz: 50                # frankapy target rate (panda-py uses 1000)
+  # Cartesian impedance while probing: xyz [N/m], rotation [Nm/rad]. Course limit: <= 3000 / 300.
+  stream_stiffness: [600, 600, 600, 50, 50, 50]
+  stream_skill_seconds: 120    # frankapy dynamic skill length (one per probe)
+  min_move_seconds: 2.0
+
+contact:
+  force_threshold: 5.0         # N on |F - bias|. MEASURE with the `noise` experiment (aim for >= 5x noise std)
+  debounce: 3                  # consecutive samples over threshold
+  bias_seconds: 0.5            # stationary averaging before each probe
+  safety_force: 20.0           # N: abort any probe above this
+  retreat: 0.003               # back off this far after a contact
+  probe_timeout: 90.0
+
+fit:
+  force_weight: 0.004          # see docs/experiments/phase1_refit*.json
+  verify_rounds: 2             # face-normal verification rounds (stops early once consistent; 0 = off)
+
+gripper:
+  peg_width: 0.025             # square top
+  grasp_force: 40.0

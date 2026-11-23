@@ -52,7 +52,9 @@ Status of each module:
 | `insertion/env.py` | Gymnasium insertion environment with torque-history observations and bounded spiral residuals | Phase 2 |
 | `sim/scene.py`, `sim/geometry.py` | Working: Panda + table + shelves, peg, base with hole | Phase 2 |
 | `sim/control.py` | Working: IK and gravity-compensated joint PD (placeholder for impedance control) | Phase 2 |
-| `robot/interface.py` | Abstract interface only | Phase 1 |
+| `robot/` | Real-robot probing: shared guarded probe; backends for frankapy (default, untested on hardware), panda-py (experimental) and MuJoCo (tested) | Phase 1 |
+| `localization/touch_localizer.py`, `localization/fit.py` | Phase 1 search + box fit + face-normal verification, for any backend | Phase 1 |
+| `scripts/real/phase1.py` | Real-robot Phase 1 experiments (check, table, noise, touch, groundtruth, localize, refit). Lab guide: [`docs/real_robot.md`](docs/real_robot.md) | Phase 1 |
 
 ## Setup
 
