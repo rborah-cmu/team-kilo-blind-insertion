@@ -19,6 +19,7 @@ toward the top. The base frame's origin is the centre of its bottom face.
 from __future__ import annotations
 
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import mujoco
 import numpy as np
@@ -129,6 +130,35 @@ def build_scene_xml(
     if peg_mode == "hand":
         excludes = "".join(f'<exclude body1="peg" body2="{b}" />' for b in FINGER_BODIES)
         xml = xml.replace("</mujoco>", f"  <contact>{excludes}</contact>\n</mujoco>")
+    if peg_mode == "hand" and cfg.get("grasp", {}).get("mode") == "contact":
+        root = ET.fromstring(xml)
+        hand = root.find(".//body[@name='hand']")
+        peg_node = hand.find("body[@name='peg']")
+        hand.remove(peg_node)
+        peg_node.set("pos", "0 0 1")
+        peg_node.set("quat", "1 0 0 0")
+        peg_node.insert(0, ET.Element("freejoint", name="peg_free"))
+        root.find("worldbody").append(peg_node)
+        contact = root.find("contact")
+        for exclude in list(contact):
+            if exclude.get("body1") == "peg":
+                contact.remove(exclude)
+        for name in FINGER_BODIES:
+            finger = root.find(f".//body[@name='{name}']")
+            for i, geom in enumerate(finger.findall("geom")):
+                if geom.get("class") == "visual":
+                    continue
+                geom.set("name", f"{name}_contact_{i}")
+                ET.SubElement(contact, "pair", geom1="peg_top", geom2=geom.get("name"),
+                              condim="4", friction="0.8 0.8 0.001 0.0001 0.0001",
+                              solref="0.008 1", solimp="0.95 0.99 0.001")
+        actuator = root.find(".//position[@name='actuator8']")
+        actuator.set("kp", "8000")
+        actuator.set("forcerange", "-70 70")
+        actuator.set("forcelimited", "true")
+        root.find("option").set("cone", "elliptic")
+        root.find("option").set("impratio", "5")
+        return ET.tostring(root, encoding="unicode")
     return xml
 
 

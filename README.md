@@ -272,6 +272,77 @@ follows [Residual Reinforcement Learning for Robot Control](https://arxiv.org/ab
 This implementation does not reproduce the reference paper's auxiliary
 contact-supervision loss or its large-scale training regime.
 
+## Contact-grasp experiment
+
+`configs/contact_grasp.yaml` enables an experimental physical grasp. The peg
+is a free body held by frictional contacts with the existing finger geometry;
+there is no hand-to-peg weld during the episode. Finger contacts have finite
+compliance and allow translation, rotation and slip under load. This models
+contact compliance, not deformable fingertip material, structural finger flex
+or printed-part deformation. The published v4 artifact and default config
+still use the rigid grasp.
+
+Provisional parameters:
+
+| Parameter | Training range / behavior |
+| --- | --- |
+| Total closing-force cap | 30–70 N, sampled per episode; the split tendon applies half to each finger |
+| Sliding friction coefficient | 0.5–1.2, sampled per episode |
+| Finger contact time constant | 5–10 ms, sampled per episode; damping ratio 1 |
+| Initial grasp | Same translation/tilt perturbations as v4; holder supports peg for 0.2 s while jaws close, then 0.3 s unsupported settling |
+| Grip loss | More than 15 mm tip displacement relative to the settled grasp, or loss of bilateral finger contact for 0.2 s; ends episode with −10 |
+| Success | Existing seated-depth/alignment/dwell checks, plus bilateral finger contact |
+
+The [Franka Hand manual](https://download.franka.de/documents/220010_Product%20Manual%20Franka%20Hand_1.0_EN.pdf)
+specifies adjustable continuous grasp force of 30–70 N. We use that range as
+an order-of-magnitude reference; the simulation's total-tendon-force convention
+must be checked against the real command and measured finger loads. Friction
+is a provisional uncertainty range, not a measured property of our print.
+Contact softness follows [MuJoCo's contact modeling guidance](https://mujoco.readthedocs.io/en/stable/modeling.html#contact-parameters);
+it is not a calibrated rubber stiffness. Pickup itself remains outside this
+insertion task: the supported initialization creates a closed grasp before
+policy control begins.
+
+Finger squeeze is excluded from the fixture-contact force penalty. Evaluation
+and training logs record drop failures and peak grasp displacement. The actor
+still receives nominal tool FK and joint sensing, not actual slip or true peg
+pose. No rotational action or learned gripper command was added.
+
+Initial matched check on 20 new seeds (50000–50019): the physical-grasp baseline
+succeeded 20/20 in 16.58 s on average; the existing rigid-trained v4 policy
+succeeded 20/20 in 14.59 s. Maximum grasp-tip displacement during an episode
+was 2.32 mm for the baseline and 1.84 mm for the policy. No drops occurred in
+this small check; opening the jaws in a regression test does release the peg.
+These are transfer checks, not results of retraining on contact grasps.
+Published per-trial results: [baseline](artifacts/contact_grasp_transfer/baseline.json),
+[existing policy](artifacts/contact_grasp_transfer/old_policy.json), and
+[provenance](artifacts/contact_grasp_transfer/metadata.json).
+
+Watch the existing policy with the new physics before training:
+
+```bash
+sh scripts/watch_insertion.sh --config configs/contact_grasp.yaml --seed 50000
+```
+
+Start a separate **fresh** run:
+
+```bash
+.venv/bin/python scripts/train_insertion.py \
+  --config configs/contact_grasp.yaml --envs 8 --timesteps 2000000 \
+  --output-dir runs/insertion_contact_v1
+```
+
+After a checkpoint is saved, replay it with:
+
+```bash
+sh scripts/watch_insertion.sh --run-dir runs/insertion_contact_v1 --seed 50000
+```
+
+For a matched physical-grasp baseline, use `scripts/evaluate_insertion.py`
+with `--config configs/contact_grasp.yaml` and omit `--model`. To test transfer
+of the existing rigid-grasp policy, also pass
+`--model artifacts/insertion_v4/best_model.zip`. Use identical seeds for both.
+
 ## Working together
 
 - Branch per task (`phase1/hole-search`, `phase2/env`), open a pull request,

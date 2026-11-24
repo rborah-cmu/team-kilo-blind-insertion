@@ -1,0 +1,633 @@
+{
+  "episodes": 20,
+  "successes": 20,
+  "success_rate": 1.0,
+  "mean_success_seconds": 14.59,
+  "mean_return": 16.376622713424787,
+  "max_peak_load_n": 14.345406329741438,
+  "controller": "deterministic_policy",
+  "noise_halfwidth_mm": 5.0,
+  "max_episode_seconds": 60.0,
+  "configuration": {
+    "peg": {
+      "top_size": [
+        0.025,
+        0.025,
+        0.01905
+      ],
+      "shaft_radius": 0.0125,
+      "shaft_length": 0.0381,
+      "chamfer": 0.001,
+      "mass": 0.025,
+      "tip_offset_from_flange": 0.15,
+      "holder_pose": [
+        0.45,
+        -0.25,
+        0.1,
+        0.0
+      ]
+    },
+    "box": {
+      "size": [
+        0.1267,
+        0.169,
+        0.0508
+      ],
+      "search_region": {
+        "x": [
+          0.35,
+          0.65
+        ],
+        "y": [
+          -0.15,
+          0.15
+        ]
+      }
+    },
+    "hole": {
+      "radius": 0.0127,
+      "clearance": 0.0004,
+      "chamfer": 0.001,
+      "cad_offset": [
+        0.00262,
+        0.00302
+      ],
+      "max_offset_from_center": 0.02
+    },
+    "contact": {
+      "tau_ext_threshold": 1.5,
+      "debounce_samples": 5
+    },
+    "snake_search": {
+      "corners": [
+        [
+          0.32,
+          -0.2
+        ],
+        [
+          0.7,
+          -0.2
+        ],
+        [
+          0.7,
+          0.2
+        ],
+        [
+          0.32,
+          0.2
+        ]
+      ],
+      "tabletop_height": 0.0001,
+      "ee_float_height": 0.03,
+      "virtual_probe_length": 0.047625,
+      "force_threshold": 2.0
+    },
+    "hole_search": {
+      "num_particles": 4000,
+      "drop_depth": 0.002,
+      "stop_std": 0.001
+    },
+    "insertion": {
+      "policy_rate_hz": 50,
+      "history_seconds": 0.6,
+      "history_frames": 30,
+      "train_noise_xy": 0.005,
+      "start_clearance": 0.003,
+      "success_depth": 0.0371,
+      "success_xy_tolerance": 0.0001,
+      "success_hold_seconds": 0.1,
+      "descent_rate": 0.006,
+      "spiral_pitch": 0.001,
+      "spiral_max_radius": 0.009,
+      "search_speed": 0.01,
+      "tracking_tolerance": 0.002,
+      "capture_depth": 0.0003,
+      "engagement_depth": 0.003,
+      "capture_timeout": 1.0,
+      "touch_force": 0.15,
+      "touch_samples": 3,
+      "seating_overtravel": 0.003,
+      "search_z_lead": 0.001,
+      "insert_z_lead": 0.006,
+      "search_xy_stiffness": 600.0,
+      "insert_xy_stiffness": 150.0,
+      "z_stiffness": 400.0,
+      "rotation_stiffness": [
+        2.0,
+        2.0,
+        10.0
+      ],
+      "cartesian_damping": [
+        30.0,
+        30.0,
+        40.0,
+        2.0,
+        2.0,
+        5.0
+      ],
+      "action_limit_xyz": [
+        0.001,
+        0.001,
+        0.0005
+      ],
+      "residual_speed": 0.005,
+      "max_episode_steps": 3000,
+      "grasp_offset_std": 0.0005,
+      "grasp_tilt_std_rad": 0.0087,
+      "grasp_clip_sigma": 3.0,
+      "ik_tolerance": 0.002,
+      "time_cost_per_second": 0.1,
+      "force_cost_per_second": 0.02,
+      "force_soft_limit": 8.0,
+      "smoothness_cost_per_second": 0.01,
+      "success_reward": 20.0,
+      "ppo_gamma": 0.999,
+      "ppo_gae_lambda": 0.97,
+      "num_envs": 8,
+      "total_timesteps": 2000000,
+      "ppo_n_steps": 512,
+      "ppo_batch_size": 256,
+      "eval_interval": 200000,
+      "eval_episodes": 20
+    },
+    "sim": {
+      "timestep": 0.001,
+      "contact_time_constant": 0.005
+    },
+    "grasp": {
+      "mode": "contact",
+      "force_range_n": [
+        30.0,
+        70.0
+      ],
+      "friction_range": [
+        0.5,
+        1.2
+      ],
+      "contact_time_range": [
+        0.005,
+        0.01
+      ],
+      "settle_seconds": 0.5,
+      "supported_seconds": 0.2,
+      "loss_distance": 0.015,
+      "drop_penalty": 10.0
+    }
+  },
+  "success_by_actual_error": {
+    ">4 mm": {
+      "count": 13,
+      "successes": 13
+    },
+    "2\u20134 mm": {
+      "count": 6,
+      "successes": 6
+    },
+    "0\u20132 mm": {
+      "count": 1,
+      "successes": 1
+    }
+  },
+  "records": [
+    {
+      "seed": 50000,
+      "success": true,
+      "seconds": 18.6,
+      "error_xy_mm": [
+        4.359435219153398,
+        4.142672215689807
+      ],
+      "return": 16.22761343796624,
+      "depth_mm": 37.62884588315269,
+      "entry_error_mm": 0.21207918223423994,
+      "peak_load_n": 13.92412656772057,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.656348760809855,
+      "reward_terms": {
+        "reward_shaping": -1.9119872563625955,
+        "reward_time": -1.8600000000000014,
+        "reward_force": -0.0003730234184787823,
+        "reward_smoothness": -2.628225268446488e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50001,
+      "success": true,
+      "seconds": 14.66,
+      "error_xy_mm": [
+        2.993043138590201,
+        3.984358964862313
+      ],
+      "return": 16.423158398553454,
+      "depth_mm": 37.352711744946504,
+      "entry_error_mm": 0.21507033394041092,
+      "peak_load_n": 8.182743707910001,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.021917259889371,
+      "reward_terms": {
+        "reward_shaping": -2.110820629075268,
+        "reward_time": -1.466000000000001,
+        "reward_force": -3.6548741582000234e-06,
+        "reward_smoothness": -1.7317497117076497e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50002,
+      "success": true,
+      "seconds": 14.02,
+      "error_xy_mm": [
+        -3.574811610137323,
+        1.7496891330269493
+      ],
+      "return": 16.34958652628957,
+      "depth_mm": 37.61490573907129,
+      "entry_error_mm": 0.2081923376653881,
+      "peak_load_n": 10.881176693150074,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.6934068341667915,
+      "reward_terms": {
+        "reward_shaping": -2.2482579092700816,
+        "reward_time": -1.402000000000001,
+        "reward_force": -0.00013479219299105291,
+        "reward_smoothness": -2.0772247355066453e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50003,
+      "success": true,
+      "seconds": 18.46,
+      "error_xy_mm": [
+        4.39592214183425,
+        4.24197226420112
+      ],
+      "return": 16.13716419614436,
+      "depth_mm": 37.7028586700185,
+      "entry_error_mm": 0.21475599574819224,
+      "peak_load_n": 9.372525837216275,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.1542975756592146,
+      "reward_terms": {
+        "reward_shaping": -2.0167361543891347,
+        "reward_time": -1.8460000000000014,
+        "reward_force": -7.330590527001949e-05,
+        "reward_smoothness": -2.634356123530655e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50004,
+      "success": true,
+      "seconds": 19.26,
+      "error_xy_mm": [
+        -4.652224616885304,
+        -1.3158104288375216
+      ],
+      "return": 15.851482619110936,
+      "depth_mm": 37.64073553017556,
+      "entry_error_mm": 0.2113437057015838,
+      "peak_load_n": 8.368005134024783,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.8437324446337464,
+      "reward_terms": {
+        "reward_shaping": -2.2224593579888223,
+        "reward_time": -1.9260000000000015,
+        "reward_force": -7.36010268049565e-06,
+        "reward_smoothness": -5.0662797560656194e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50005,
+      "success": true,
+      "seconds": 19.44,
+      "error_xy_mm": [
+        -3.2732611360241615,
+        -3.0606950261313703
+      ],
+      "return": 15.646927961783545,
+      "depth_mm": 37.213231222202005,
+      "entry_error_mm": 0.18702020123223742,
+      "peak_load_n": 8.126622104137091,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.0843551743179323,
+      "reward_terms": {
+        "reward_shaping": -2.408997723593532,
+        "reward_time": -1.9440000000000015,
+        "reward_force": -3.3283327022639145e-06,
+        "reward_smoothness": -7.098629022018194e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50006,
+      "success": true,
+      "seconds": 13.6,
+      "error_xy_mm": [
+        0.2696310992445039,
+        4.925407892624319
+      ],
+      "return": 16.758435952320525,
+      "depth_mm": 37.665423428157744,
+      "entry_error_mm": 0.21145273514770238,
+      "peak_load_n": 8.130355356555796,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.8411691535079767,
+      "reward_terms": {
+        "reward_shaping": -1.8815412521888675,
+        "reward_time": -1.360000000000001,
+        "reward_force": -2.6071071311159246e-06,
+        "reward_smoothness": -2.0188383476124733e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50007,
+      "success": true,
+      "seconds": 13.88,
+      "error_xy_mm": [
+        -2.084442059129621,
+        2.33431720194286
+      ],
+      "return": 16.12454431019919,
+      "depth_mm": 37.67057030212296,
+      "entry_error_mm": 0.21332204311697636,
+      "peak_load_n": 7.700835112798463,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.0035115291003327,
+      "reward_terms": {
+        "reward_shaping": -2.4874374701549122,
+        "reward_time": -1.388000000000001,
+        "reward_force": 0.0,
+        "reward_smoothness": -1.8219645897211932e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50008,
+      "success": true,
+      "seconds": 10.4,
+      "error_xy_mm": [
+        1.5509972201737843,
+        -0.5831856145457426
+      ],
+      "return": 16.489602293320367,
+      "depth_mm": 37.691370928613175,
+      "entry_error_mm": 0.17526674487393554,
+      "peak_load_n": 6.033392389619896,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.7624133796536116,
+      "reward_terms": {
+        "reward_shaping": -2.47038185067221,
+        "reward_time": -1.0400000000000007,
+        "reward_force": 0.0,
+        "reward_smoothness": -1.5856007420791316e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50009,
+      "success": true,
+      "seconds": 9.86,
+      "error_xy_mm": [
+        -0.42045232203970606,
+        3.147144948330692
+      ],
+      "return": 16.995999470555166,
+      "depth_mm": 37.68095595106563,
+      "entry_error_mm": 0.15827298131221773,
+      "peak_load_n": 9.82476201519074,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.38595494616341897,
+      "reward_terms": {
+        "reward_shaping": -2.017852264492891,
+        "reward_time": -0.9860000000000008,
+        "reward_force": -0.00013596959463996736,
+        "reward_smoothness": -1.2295357300858278e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50010,
+      "success": true,
+      "seconds": 11.76,
+      "error_xy_mm": [
+        -1.3962856968759496,
+        -2.8242113667217463
+      ],
+      "return": 16.476309203534868,
+      "depth_mm": 37.588988251113754,
+      "entry_error_mm": 0.2068323064544341,
+      "peak_load_n": 6.823969955652665,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.502587638842264,
+      "reward_terms": {
+        "reward_shaping": -2.347659483510429,
+        "reward_time": -1.1760000000000008,
+        "reward_force": 0.0,
+        "reward_smoothness": -3.1312954703457546e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50011,
+      "success": true,
+      "seconds": 11.2,
+      "error_xy_mm": [
+        -3.6609622519180496,
+        -0.1822577576441975
+      ],
+      "return": 16.43942195698964,
+      "depth_mm": 37.59683066259836,
+      "entry_error_mm": 0.20223439870576543,
+      "peak_load_n": 8.83384683526294,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.6849446319754618,
+      "reward_terms": {
+        "reward_shaping": -2.440535108395875,
+        "reward_time": -1.1200000000000008,
+        "reward_force": -1.6676936705258783e-05,
+        "reward_smoothness": -2.6257677779438056e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50012,
+      "success": true,
+      "seconds": 10.4,
+      "error_xy_mm": [
+        -3.958977094964432,
+        -0.6702805616909102
+      ],
+      "return": 16.649863068384423,
+      "depth_mm": 37.66679043259705,
+      "entry_error_mm": 0.2086214499060749,
+      "peak_load_n": 7.183974984446711,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.7842677860193367,
+      "reward_terms": {
+        "reward_shaping": -2.310119569478021,
+        "reward_time": -1.0400000000000007,
+        "reward_force": 0.0,
+        "reward_smoothness": -1.7362137558455092e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50013,
+      "success": true,
+      "seconds": 17.12,
+      "error_xy_mm": [
+        3.8129956363266295,
+        1.5519625447699739
+      ],
+      "return": 15.859781076439354,
+      "depth_mm": 37.6724677023633,
+      "entry_error_mm": 0.20697188916267714,
+      "peak_load_n": 10.362503879478297,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.142699947250073,
+      "reward_terms": {
+        "reward_shaping": -2.428071860951335,
+        "reward_time": -1.7120000000000013,
+        "reward_force": -0.0001230605433969796,
+        "reward_smoothness": -2.4002065912544054e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50014,
+      "success": true,
+      "seconds": 14.8,
+      "error_xy_mm": [
+        1.9432666012264765,
+        3.9155129977280803
+      ],
+      "return": 16.54462341058506,
+      "depth_mm": 37.48879143236703,
+      "entry_error_mm": 0.21608898035660612,
+      "peak_load_n": 10.749885559687531,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.5495337966606229,
+      "reward_terms": {
+        "reward_shaping": -1.9751806522048119,
+        "reward_time": -1.480000000000001,
+        "reward_force": -0.0001791987457436321,
+        "reward_smoothness": -1.673846438634641e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50015,
+      "success": true,
+      "seconds": 17.44,
+      "error_xy_mm": [
+        -2.589470567004515,
+        4.860962125384282
+      ],
+      "return": 16.18879290255619,
+      "depth_mm": 37.293717952808805,
+      "entry_error_mm": 0.12001053743350996,
+      "peak_load_n": 6.572185907861497,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.0991303536029537,
+      "reward_terms": {
+        "reward_shaping": -2.0671857171838326,
+        "reward_time": -1.7440000000000013,
+        "reward_force": 0.0,
+        "reward_smoothness": -2.1380259975829905e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50016,
+      "success": true,
+      "seconds": 17.42,
+      "error_xy_mm": [
+        4.425700513980675,
+        4.72837230045298
+      ],
+      "return": 16.344590106885878,
+      "depth_mm": 37.47562573602243,
+      "entry_error_mm": 0.2161683056224141,
+      "peak_load_n": 9.336797028780763,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.9371477045168104,
+      "reward_terms": {
+        "reward_shaping": -1.9132717041900333,
+        "reward_time": -1.7420000000000013,
+        "reward_force": -0.00011329004364249115,
+        "reward_smoothness": -2.4898880445621565e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50017,
+      "success": true,
+      "seconds": 12.74,
+      "error_xy_mm": [
+        4.344731022580591,
+        -2.915348499342266
+      ],
+      "return": 16.78888792011115,
+      "depth_mm": 37.61322891373081,
+      "entry_error_mm": 0.20362752877721468,
+      "peak_load_n": 8.760011949440159,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.03660717414217,
+      "reward_terms": {
+        "reward_shaping": -1.9370519125585206,
+        "reward_time": -1.274000000000001,
+        "reward_force": -3.769845670113281e-05,
+        "reward_smoothness": -2.246887362456133e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50018,
+      "success": true,
+      "seconds": 16.54,
+      "error_xy_mm": [
+        -4.909036692204957,
+        -1.3649576292144074
+      ],
+      "return": 16.278985409418784,
+      "depth_mm": 37.626877811511264,
+      "entry_error_mm": 0.20044765442931262,
+      "peak_load_n": 7.024942091738294,
+      "dropped": false,
+      "peak_grasp_slip_mm": 1.0457234546638932,
+      "reward_terms": {
+        "reward_shaping": -2.066984144881886,
+        "reward_time": -1.6540000000000012,
+        "reward_force": 0.0,
+        "reward_smoothness": -3.0445699333130123e-05,
+        "reward_success": 20.0
+      }
+    },
+    {
+      "seed": 50019,
+      "success": true,
+      "seconds": 10.2,
+      "error_xy_mm": [
+        2.1281589315362717,
+        2.7494248610096483
+      ],
+      "return": 16.956684047347032,
+      "depth_mm": 37.61505096912775,
+      "entry_error_mm": 0.20600508844763735,
+      "peak_load_n": 14.345406329741438,
+      "dropped": false,
+      "peak_grasp_slip_mm": 0.39275231794030857,
+      "reward_terms": {
+        "reward_shaping": -2.022968605218801,
+        "reward_time": -1.0200000000000007,
+        "reward_force": -0.00033500981700402443,
+        "reward_smoothness": -1.2337617161362931e-05,
+        "reward_success": 20.0
+      }
+    }
+  ]
+}
