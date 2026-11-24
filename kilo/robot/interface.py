@@ -61,11 +61,15 @@ class ProbeSettings:
     stream_hz: float = 50.0
     timeout: float = 60.0            # s
 
+    min_lead: float = 0.025          # m: enough pull to overcome joint friction on the real arm
+
     @property
     def max_lead(self) -> float:
-        """Furthest the target may run ahead of the tip. Caps the push to ~2x threshold
-        even if detection fails, and is large enough that contact is always detectable."""
-        return 2.0 * self.force_threshold / self.stiffness
+        """Furthest the target may run ahead of the tip. Bounds the push (stiffness x lead) even if
+        detection fails: at least 2x the threshold so contact is detectable, at least ``min_lead``
+        so the arm keeps moving against friction, and below the safety force."""
+        lead = max(2.0 * self.force_threshold / self.stiffness, self.min_lead)
+        return min(lead, 0.9 * self.safety_force / self.stiffness)
 
 
 class SafetyStop(RuntimeError):
@@ -85,6 +89,32 @@ def yaw_of_tool(rotation: np.ndarray) -> float:
 def nearest_equivalent_yaw(yaw: float, reference: float) -> float:
     """The gripper is symmetric under a half turn: pick yaw or yaw+pi, whichever is closer."""
     return float(yaw + np.pi * np.round((reference - yaw) / np.pi))
+
+
+Q7_LIMIT = 2.8973
+
+
+def choose_wrist_yaw(direction_xy, state: "RobotState", target_xy=None) -> tuple[float, float | None]:
+    """Finger-axis yaw along ``direction_xy`` (or its half turn, the gripper is symmetric),
+    choosing the one that keeps joint 7 nearest the middle of its range at ``target_xy``.
+
+    With the tool pointing down, measured on the Panda model (2026-11-22):
+        dq7 ~ -d(yaw) + d(azimuth)
+    where azimuth is the base angle to the tip. The controller rotates the shortest way.
+    Returns (yaw as an angle next to the current one, predicted q7 or None).
+    """
+    base = float(np.arctan2(direction_xy[1], direction_xy[0]))
+    here = np.asarray(state.tip[:2])
+    there = here if target_xy is None else np.asarray(target_xy, float)
+    d_az = float(np.arctan2(there[1], there[0]) - np.arctan2(here[1], here[0]))
+    best = None
+    for cand in (base, base + np.pi):
+        turn = float(np.angle(np.exp(1j * (cand - state.yaw))))  # shortest rotation
+        q7 = None if state.q is None else float(state.q[6] - turn + d_az)
+        score = abs(q7) if q7 is not None else abs(turn)
+        if best is None or score < best[0]:
+            best = (score, state.yaw + turn, q7)
+    return best[1], best[2]
 
 
 class RobotBackend(ABC):
@@ -120,6 +150,25 @@ class RobotBackend(ABC):
         pass
 
     # ------------------------------------------------------------------ shared logic
+    def move_and_record(self, tip, yaw, speed: float, hz: float) -> np.ndarray:
+        """Free-space straight move while sampling (time, tip xyz, force xyz) at ``hz``.
+        Default: streamed targets. Backends with a better native motion override this."""
+        start = self.state().tip.copy()
+        tip = np.asarray(tip, float)
+        length = float(np.linalg.norm(tip - start))
+        rows, t = [], 0.0
+        self.begin_stream()
+        try:
+            while t * speed < length:
+                self.stream_target(start + (tip - start) * min(1.0, t * speed / length), yaw)
+                self.tick(1.0 / hz)
+                st = self.state()
+                rows.append([st.time, *st.tip, *st.force])
+                t += 1.0 / hz
+        finally:
+            self.end_stream()
+        return np.asarray(rows)
+
     def measure_bias(self, seconds: float, hz: float) -> np.ndarray:
         """Average contact force while holding still (removes the posture-dependent offset)."""
         n = max(1, int(seconds * hz))

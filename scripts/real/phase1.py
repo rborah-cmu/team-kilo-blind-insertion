@@ -2,6 +2,8 @@
 
 Run in this order the first time (see docs/real_robot.md):
     check        read state, measure loop rate and force noise at rest (no motion)
+    home         joint move to frankapy home (checked against the shelf model first)
+    move         reposition the peg tip to --start X Y Z (lifts first)
     grasp        open, place the peg by hand, close on its square top
     table        guarded descent onto the table: measures table_z and the force sign
     noise        force noise at rest and while moving in free air -> contact threshold
@@ -39,7 +41,8 @@ from kilo.config import load_config  # noqa: E402
 from kilo.localization.fit import fit_box, pose_distance  # noqa: E402
 from kilo.robot import ProbeSettings, SafetyStop, make_backend  # noqa: E402
 
-MAX_PROBE_DISTANCE = 0.15  # m, for the single-probe experiments
+MAX_PROBE_DISTANCE = 0.15  # m, for the sideways single-probe experiments
+MAX_TABLE_DESCENT = 0.60   # m, the guarded table descent may start from near the home pose
 
 
 # ---------------------------------------------------------------------------- utilities
@@ -61,9 +64,13 @@ class RunLog:
 def _jsonable(o):
     if isinstance(o, np.ndarray):
         return o.tolist()
-    if isinstance(o, (np.floating, np.integer)):
+    if isinstance(o, (np.floating, np.integer, np.bool_)):
         return o.item()
-    raise TypeError(type(o))
+    if isinstance(o, (set, tuple)):
+        return list(o)
+    # Never lose a run log to one odd value (2026-11-24: a numpy.bool_ in the executor
+    # diagnostics aborted the save and dropped the return-move failure details).
+    return repr(o)
 
 
 def confirm(args, what: str) -> None:
@@ -125,24 +132,64 @@ def cmd_check(args, cfg, robot, log):
     log.arrays["rest"] = rows
 
 
+def cmd_home(args, cfg, robot, log):
+    """Joint move to frankapy's home pose; refuses if the straight joint path hits the shelf model."""
+    fa = getattr(robot, "fa", None)
+    if fa is None:
+        raise SystemExit("home needs the frankapy backend")
+    from frankapy import FrankaConstants as FC
+    home = np.asarray(FC.HOME_JOINTS, float)
+    st = robot.state()
+    geometry = getattr(robot, "geometry", None)
+    if geometry is not None:
+        try:
+            samples, _ = geometry.check_joint_edge(np.asarray(st.q, float), home, min_clearance=.002)
+        except Exception as exc:
+            raise SafetyStop(f"the joint path to home fails the shelf check ({exc}); move the arm by hand first")
+        print(f"joint path to home checked: {len(samples)} samples clear the shelf model")
+    print(f"largest joint change {np.degrees(np.max(np.abs(home - st.q))):.1f} deg")
+    confirm(args, "move the arm to frankapy home (one 8 s joint move)")
+    fa.goto_joints(home.tolist(), duration=8, ignore_errors=False, ignore_virtual_walls=False, skill_desc="Kilo home")
+    end = robot.state()
+    print(f"at home: max joint error {np.max(np.abs(end.q - home)) * 1000:.2f} mrad, tip {np.round(end.tip, 4)}")
+    log.data.update(start=state_summary(st), end=state_summary(end))
+
+
 def cmd_grasp(args, cfg, robot, log):
+    """--stage both (default): open, wait for Enter, close. Over SSH use --stage open, then --stage close."""
     g = cfg["gripper"]
-    confirm(args, "open the gripper, then close it on the peg you place by hand")
-    robot.gripper(0.08)
-    input("Place the peg's square top between the fingers (shaft pointing down), then press Enter: ")
-    robot.gripper(float(g["peg_width"]), grasp=True, force=float(g["grasp_force"]))
-    log.data.update(state=state_summary(robot.state()))
+    if args.stage in ("both", "open"):
+        confirm(args, "open the gripper fully")
+        robot.gripper(0.08)
+    if args.stage == "both":
+        input("Place the peg's square top between the fingers (shaft pointing down), then press Enter: ")
+    if args.stage in ("both", "close"):
+        if args.stage == "close":
+            confirm(args, f"close the gripper on the peg with {g['grasp_force']} N")
+        robot.gripper(float(g["peg_width"]), grasp=True, force=float(g["grasp_force"]))
+    width = getattr(getattr(robot, "fa", None), "get_gripper_width", lambda: None)()
+    if width is not None:
+        print(f"gripper width now {width * 1000:.1f} mm (peg top is {g['peg_width'] * 1000:.1f} mm)")
+    log.data.update(stage=args.stage, gripper_width=width, state=state_summary(robot.state()))
 
 
 def cmd_table(args, cfg, robot, log):
     st = robot.state()
-    target = st.tip - np.array([0, 0, min(args.distance, MAX_PROBE_DISTANCE)])
+    floor = float(cfg["workspace"].get("descent_floor_z", -0.03))
+    target = st.tip - np.array([0, 0, min(args.distance, MAX_TABLE_DESCENT)])
+    target[2] = max(target[2], floor)  # frankapy refuses targets below its virtual floor wall (z = -0.05)
     confirm(args, f"lower the peg tip up to {args.distance * 100:.0f} cm straight down until it touches the table")
     s = probe_settings(cfg, robot, "descent_speed")
     res = robot.probe(target, st.yaw, s)
+    log.arrays["probe"] = np.asarray(res.samples)
     if not res.contact:
-        print("No contact: the table is further than --distance below the tip.")
-        log.data.update(contact=False)
+        travelled = res.distance * 1000
+        if res.stalled:
+            print(f"No contact: the arm STALLED after {travelled:.0f} mm without touching anything "
+                  "(it stopped following the targets). See samples.npz.")
+        else:
+            print(f"No contact after {travelled:.0f} mm: the table is further than --distance below the tip.")
+        log.data.update(contact=False, stalled=res.stalled, travelled_mm=travelled, end_tip=res.tip)
         return
     fz = float(res.force[2])
     sign_ok = fz > 0
@@ -168,20 +215,10 @@ def cmd_noise(args, cfg, robot, log):
     distance = min(args.distance, MAX_PROBE_DISTANCE)
     confirm(args, f"hold still {args.seconds:.0f} s, then move {distance * 100:.0f} cm along {d[:2]} in free air "
                   "(make sure nothing is in the way)")
-    robot.begin_stream()
-    try:
-        robot.stream_target(st.tip, st.yaw)
-        rest = read_forces(robot, args.seconds, hz)
-        moving, t, speed = [], 0.0, float(cfg["motion"]["search_speed"])
-        while t * speed < distance:
-            robot.stream_target(st.tip + d * speed * t, st.yaw)
-            robot.tick(1.0 / hz)
-            s2 = robot.state()
-            moving.append([s2.time, *s2.tip, *s2.force])
-            t += 1.0 / hz
-    finally:
-        robot.end_stream()
-    moving = np.asarray(moving)
+    rest = read_forces(robot, args.seconds, hz)
+    moving = robot.move_and_record(st.tip + d * distance, st.yaw, float(cfg["motion"]["search_speed"]), hz)
+    moved = float(np.linalg.norm(moving[-1, 1:4] - st.tip)) if len(moving) else 0.0
+    print(f"moved {moved * 1000:.1f} mm of the requested {distance * 1000:.0f} mm")
     rs, ms = force_stats(rest), force_stats(moving)
     # moving deviation measured against the at-rest mean (what the probe's bias removal does)
     dev = np.linalg.norm(moving[:, 4:7] - rest[:, 4:7].mean(axis=0), axis=1)
@@ -201,21 +238,29 @@ def cmd_touch(args, cfg, robot, log):
     d = np.r_[np.asarray(args.direction, float), 0.0]
     d /= np.linalg.norm(d)
     distance = min(args.distance, MAX_PROBE_DISTANCE)
-    yaw = float(np.arctan2(d[1], d[0]))
-    from kilo.robot import nearest_equivalent_yaw
-    yaw = nearest_equivalent_yaw(yaw, float(cfg["robot"].get("wrist_yaw_offset", -2.356)) + np.arctan2(st0.tip[1], st0.tip[0]))
+    if hasattr(robot, "required_wrist_yaw"):
+        yaw = robot.required_wrist_yaw
+    elif cfg["motion"].get("align_wrist", False):
+        from kilo.robot.interface import choose_wrist_yaw
+        yaw, _ = choose_wrist_yaw(d[:2], st0, st0.tip[:2] + d[:2] * distance)
+    else:
+        yaw = st0.yaw  # same as localize's default: one wrist angle throughout
     confirm(args, f"probe {args.repeats}x up to {distance * 100:.0f} cm along {np.round(d[:2], 2)} at the current height, "
                   "returning to the start each time")
     s = probe_settings(cfg, robot)
     travel = float(cfg["motion"]["travel_speed"])
     robot.move(st0.tip, yaw, travel)
     results = []
+    log.data.update(direction=d, distance=distance, probes=[])
     for k in range(args.repeats):
         res = robot.probe(st0.tip + d * distance, yaw, s)
         results.append(res)
         print(f"  probe {k + 1}: {'contact' if res.contact else 'no contact'} at {np.round(res.tip, 4)}, "
               f"travel {res.distance * 1000:.1f} mm, force {np.round(res.force, 1)} N, peak {res.peak_force:.1f} N")
         log.arrays[f"probe{k}"] = np.asarray(res.samples)
+        log.data["probes"].append({"contact": res.contact, "tip": res.tip, "force": res.force,
+                                   "peak": res.peak_force, "distance": res.distance, "stalled": res.stalled})
+        log.save()  # preserve the completed probe even if the return move fails
         robot.move(st0.tip, yaw, travel)
     hits = [r for r in results if r.contact]
     summary = {"repeats": args.repeats, "contacts": len(hits)}
@@ -285,6 +330,8 @@ def cmd_localize(args, cfg, robot, log):
                         probe_labels=[p["label"] for p in loc.probe_logs])
     print(f"\nestimate: box centre {np.round(res['center'], 4)}, yaw {res['yaw_deg']:.1f} deg (mod 180), "
           f"worst contact gap {res['max_gap_mm']:.2f} mm, {res['seconds']:.0f} s")
+    if not res["verified"]:
+        print("Verification incomplete: treat this estimate as provisional.")
     truth = None
     if args.backend == "sim":
         c, y = robot.true_box()
@@ -326,7 +373,16 @@ def cmd_refit(args, cfg, robot, log):
     log.data.update(source=args.run, refits=rows)
 
 
-COMMANDS = {"check": cmd_check, "grasp": cmd_grasp, "table": cmd_table, "noise": cmd_noise, "touch": cmd_touch,
+def cmd_move(args, cfg, robot, log):
+    """Free-space reposition to --start X Y Z (lift first, then across, then a guarded descent)."""
+    if args.start is None:
+        raise SystemExit("move needs --start X Y Z")
+    st = robot.state()
+    print(f"peg tip now at {np.round(st.tip, 4)}")
+    log.data.update(end=state_summary(st))
+
+
+COMMANDS = {"check": cmd_check, "home": cmd_home, "move": cmd_move, "grasp": cmd_grasp, "table": cmd_table, "noise": cmd_noise, "touch": cmd_touch,
             "groundtruth": cmd_groundtruth, "localize": cmd_localize, "refit": cmd_refit}
 
 
@@ -342,6 +398,7 @@ def main() -> None:
     ap.add_argument("--distance", type=float, default=0.10)
     ap.add_argument("--direction", type=float, nargs=2, default=(1.0, 0.0))
     ap.add_argument("--repeats", type=int, default=5)
+    ap.add_argument("--stage", choices=["both", "open", "close"], default="both", help="grasp: which part to run")
     ap.add_argument("--start", type=float, nargs=3, default=None, metavar=("X", "Y", "Z"),
                     help="table/noise/touch: first move the peg tip here (free-space move)")
     ap.add_argument("--verify-rounds", type=int, default=None)
@@ -375,26 +432,32 @@ def main() -> None:
               "course docker (frankapy), or use --backend sim to rehearse offline.")
         raise SystemExit(2)
     try:
-        if args.start is not None and args.command in ("table", "noise", "touch"):
+        if args.start is not None and args.command in ("table", "noise", "touch", "move"):
             start = np.asarray(args.start, float)
             confirm(args, f"move the peg tip over {np.round(start[:2], 3)}, then lower it (force-guarded) to z={start[2]:.3f}")
             st = robot.state()
+            yaw = getattr(robot, "required_wrist_yaw", st.yaw)
             high = max(st.tip[2], start[2])
-            robot.move(np.r_[st.tip[:2], high], st.yaw, float(cfg["motion"]["travel_speed"]))
-            robot.move(np.r_[start[:2], high], st.yaw, float(cfg["motion"]["travel_speed"]))
+            robot.move(np.r_[st.tip[:2], high], yaw, float(cfg["motion"]["travel_speed"]))
+            robot.move(np.r_[start[:2], high], yaw, float(cfg["motion"]["travel_speed"]))
             if start[2] < high - 1e-4:
-                res = robot.probe(start, st.yaw, probe_settings(cfg, robot, "descent_speed"))
+                res = robot.probe(start, yaw, probe_settings(cfg, robot, "descent_speed"))
                 if res.contact:
                     raise SafetyStop(f"touched something while lowering to the start point at z={res.tip[2]:.3f}")
         COMMANDS[args.command](args, cfg, robot, log)
     except SafetyStop as exc:
         print(f"\nSAFETY STOP: {exc}")
         log.data["safety_stop"] = str(exc)
+        aborted = getattr(robot, "last_probe_samples", None)
+        if aborted is not None:
+            log.arrays["last_probe"] = np.asarray(aborted)
     except KeyboardInterrupt:
         print("\nInterrupted.")
         log.data["interrupted"] = True
     finally:
         try:
+            if hasattr(robot, "path_audit"):
+                log.data["joint_path_audit"] = robot.path_audit
             robot.close()
         finally:
             log.save()

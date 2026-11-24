@@ -11,36 +11,67 @@ robot:
   probe_length: 0.047625
   # +1 if get_ee_force_torque() is the force ON the robot, -1 if it is the force the robot applies.
   # MEASURE with the `table` experiment (it reports which sign makes the table push up).
-  force_sign: 1.0
-  # Finger-axis yaw minus the arm's base azimuth that puts joint 7 mid-range (q7 ~ yaw - azimuth + 2.36).
-  # Probes pick yaw or yaw+180 deg (the gripper is symmetric) to stay within 90 deg of this.
-  wrist_yaw_offset: -2.356
+  force_sign: -1.0             # measured 2026-11-22 (table experiment): frankapy reports the force the robot applies
+  wrist_yaw_offset: -2.356     # sim only: initial wrist yaw minus base azimuth (puts joint 7 near 0)
   home_joints: [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
 
 workspace:
   # Rectangle the box may be in. MEASURE: keep it on the clear table area, away from the shelves.
-  search_corners: [[0.32, -0.20], [0.70, -0.20], [0.70, 0.20], [0.32, 0.20]]
+  # Measured inner wall faces. Planar hand guard supplements frankapy's full-arm checks.
+  hand_wall_limits: {x: [-0.405, 0.745], y: [-0.455, 0.455]}
+  hand_half_extents: [0.165, 0.095]  # from peg axis: along / across finger axis, metres
+  hand_wall_margin: 0.01
+  # Lab 2 measured boards; support geometry is estimated, see the JSON provenance.
+  shelf_bounds_file: configs/shelf_obstacles.json
+  shelf_margin: 0.01
+  shelf_inner_y_limits: [-0.32, 0.30]
+  # x <= 0.565 lets an x-aligned hand clear both the front wall and the shelves
+  # at the y boundaries. The lower box face was touched near tip y=-0.204.
+  search_corners: [[0.32, -0.21], [0.565, -0.21], [0.565, 0.15], [0.32, 0.15]]
   margin: 0.03                 # targets may go this far outside the rectangle
-  table_z: null                # MEASURE with the `table` experiment; localize refuses to run while null
-  search_offset: 0.015         # peg tip height above the table while probing (box top is 50.8 mm)
+  table_z: 0.0072              # mean of 4 descents 2026-11-22 at (0.405, -0.075): 7.1, 7.4, 7.2, 7.0 mm. The 0.0215 reading at (0.405, -0.025)
+                               # was the gripper fingers landing on the box top. Re-measure if the robot or table changes.
+  descent_floor_z: -0.03       # lowest tip target for the table descent (Lab 3 data puts the table at ~0.01-0.02;
+                               # frankapy's virtual floor wall is at z = -0.05)
+  # Peg tip height above the table while probing. The fingers' lower edge is 38.1 mm (shaft length) above
+  # the tip and must clear the 50.8 mm box top, or the fingers hit the box first: 25 mm leaves ~12 mm.
+  search_offset: 0.025
+  search_height_tolerance: 0.006  # refuse side probes after a descent that stops too high/low
   travel_offset: 0.10          # peg tip height above the table while travelling
   snake_spacing: 0.06          # distance between sweep passes
 
 motion:
   search_speed: 0.010          # m/s while probing sideways
   descent_speed: 0.010         # m/s for guarded descents
-  travel_speed: 0.05           # m/s for free-space moves
-  # false: one wrist angle for the whole search (default; avoids joint-7 limits). true: turn the
-  # finger axis to follow each probe, as in the simulation scripts. Check grasp slip with `touch`.
-  align_wrist: false
+  travel_speed: 0.02           # m/s for free-space moves
+  # Nov 22: internal Cartesian returns failed with joint acceleration discontinuity at
+  # both 50 and 10 mm/s; a static impedance move succeeded (3.4 mm target error).
+  frankapy_move_mode: impedance  # impedance | internal (does not change native probe mode)
+  travel_impedance: [1500, 1500, 1500, 100, 100, 100]
+  min_travel_seconds: 6.0
+  # true: turn the finger axis to follow each probe so contact pushes the peg into a finger. With a
+  # fixed wrist the peg rotated ~2 mm in the grasp on the lab robot (touch test, 2026-11-22).
+  # The wrist angle (or its half turn) is chosen from the measured joint 7 to stay clear of its limits.
+  align_wrist: true
   stream_hz: 50                # frankapy target rate (panda-py uses 1000)
   # Cartesian impedance while probing: xyz [N/m], rotation [Nm/rad]. Course limit: <= 3000 / 300.
   stream_stiffness: [600, 600, 600, 50, 50, 50]
   stream_skill_seconds: 120    # frankapy dynamic skill length (one per probe)
+  # frankapy probes: native = nonblocking goto_pose with Python-side detection and force_thresholds
+  # as a 1 kHz backstop; stream = streamed impedance targets with Python-side detection. On the lab
+  # robot (2026-11-22) streamed targets stopped being tracked after ~23 mm, so native is the default.
+  frankapy_probe_mode: native
+  # Static impedance trajectory avoids internal Cartesian motion-generator rejection.
+  # First real-contact validation of this controller is pending.
+  native_probe_controller: impedance  # impedance | internal
+  native_probe_impedance: [1500, 1500, 1500, 100, 100, 100]  # stiffer: sharper contact signal, smaller tracking error (<= 3000/300)
   min_move_seconds: 2.0
 
 contact:
-  force_threshold: 5.0         # N on |F - bias|. MEASURE with the `noise` experiment (aim for >= 5x noise std)
+  # Contact = a jump of this many N over a slowly tracking baseline (frankapy native probes).
+  # Lab robot 2026-11-22: rest noise ~0.04 N; while moving the estimate drifts ~0.2 N/mm, which
+  # the baseline follows; a real contact at 1500 N/m rises ~15 N/s at 10 mm/s.
+  force_threshold: 4.0
   debounce: 3                  # consecutive samples over threshold
   bias_seconds: 0.5            # stationary averaging before each probe
   safety_force: 20.0           # N: abort any probe above this

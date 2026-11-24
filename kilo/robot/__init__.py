@@ -11,6 +11,11 @@ def make_backend(name: str, cfg: dict, **kwargs) -> RobotBackend:
         from .sim_backend import SimBackend
         return SimBackend(cfg, **kwargs)
     if name == "frankapy":
+        if cfg["robot"].get("executor") not in (None, "cartesian", "planned_joint"):
+            raise ValueError("robot.executor must be cartesian or planned_joint")
+        if cfg["robot"].get("executor") == "planned_joint":
+            from .planned_frankapy import PlannedFrankaPyBackend
+            return PlannedFrankaPyBackend(cfg, **kwargs)
         from .frankapy_backend import FrankaPyBackend
         return FrankaPyBackend(cfg, **kwargs)
     if name == "pandapy":

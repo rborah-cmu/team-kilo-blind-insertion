@@ -44,6 +44,8 @@ def test_fit_recovers_pose_from_all_four_faces():
 
 def test_sim_probe_detects_box_face():
     cfg = real_cfg()
+    # Hold the simulator's initial posture fixed as live search bounds are tuned.
+    cfg["workspace"]["search_corners"] = [[.32, -.2], [.62, -.2], [.62, .2], [.32, .2]]
     robot = make_backend("sim", cfg, box=(0.5, 0.0, 0.0), force_noise=0.3, force_bias=2.0)
     start = np.array([0.40, 0.0, robot.table_z() + 0.016])
     robot.move(np.r_[start[:2], 0.10], robot.state().yaw, 0.05)

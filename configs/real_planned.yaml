@@ -1,0 +1,155 @@
+# Checked joint-path executor candidate. Hardware tracking validation is still required.
+robot:
+  backend: frankapy
+  robot_num: 1
+  pandapy_hostname: 172.16.0.2
+  probe_length: 0.047625
+  force_sign: -1.0
+  wrist_yaw_offset: -2.356
+  home_joints:
+  - 0.0
+  - -0.785
+  - 0.0
+  - -2.356
+  - 0.0
+  - 1.571
+  - 0.785
+  executor: planned_joint
+workspace:
+  hand_wall_limits:
+    x:
+    - -0.405
+    - 0.745
+    y:
+    - -0.455
+    - 0.455
+  hand_half_extents:
+  - 0.165
+  - 0.095
+  hand_wall_margin: 0.01
+  shelf_bounds_file: configs/shelf_obstacles.json
+  shelf_margin: 0.01
+  shelf_inner_y_limits:
+  - -0.32
+  - 0.3
+  search_corners:
+  - - 0.32
+    - -0.21
+  - - 0.565
+    - -0.21
+  - - 0.565
+    - 0.15
+  - - 0.32
+    - 0.15
+  margin: 0.03
+  table_z: 0.0072
+  descent_floor_z: -0.03
+  search_offset: 0.025
+  search_height_tolerance: 0.006
+  travel_offset: 0.1
+  snake_spacing: 0.06
+motion:
+  search_speed: 0.01
+  descent_speed: 0.01
+  travel_speed: 0.02
+  frankapy_move_mode: impedance
+  travel_impedance:
+  - 1500
+  - 1500
+  - 1500
+  - 100
+  - 100
+  - 100
+  min_travel_seconds: 6.0
+  align_wrist: false
+  stream_hz: 50
+  stream_stiffness:
+  - 600
+  - 600
+  - 600
+  - 50
+  - 50
+  - 50
+  stream_skill_seconds: 120
+  frankapy_probe_mode: native
+  native_probe_controller: impedance
+  native_probe_impedance:
+  - 1500
+  - 1500
+  - 1500
+  - 100
+  - 100
+  - 100
+  min_move_seconds: 2.0
+  fixed_wrist_yaw: 3.141592653589793
+contact:
+  force_threshold: 4.0
+  debounce: 3
+  bias_seconds: 0.5
+  safety_force: 20.0
+  retreat: 0.003
+  probe_timeout: 300.0
+fit:
+  force_weight: 0.004
+  verify_rounds: 2
+gripper:
+  peg_width: 0.025
+  grasp_force: 40.0
+joint_executor:
+  model: configs/frankapy_geometry.json
+  yaw: 3.141592653589793
+  joint3: 0.0
+  cartesian_step: 0.002
+  # Travel-only command length (probes keep cartesian_step). Every merged edge is still
+  # checked for shelf clearance, <=1 mm tip deviation and wrist orientation.
+  travel_step: 0.05
+  # 2026-11-24: "stream" runs each travel/probe path as ONE frankapy dynamic joint-impedance
+  # skill (torque control, no libfranka motion generator), streaming joint targets at
+  # 1/stream_poll_seconds Hz. Every stop so far was joint_motion_generator_*_discontinuity at
+  # the start of a short JointPositionSkill segment. "segments" restores the old behavior.
+  # The wrist startup half-turn always stays a single JointPositionSkill.
+  # 2026-11-24 evening: streaming showed intermittent target freezes (joint 6) on this robot;
+  # back to segments, with automatic recovery from the benign discontinuity stop below.
+  execution: segments
+  motion_error_retries: 3     # per move/probe; only pure joint_motion_generator_*_discontinuity stops
+  max_run_recoveries: 30      # per run
+  # 2026-11-24, user decision: no stops on path discrepancy (tip/joint off path, tip lag).
+  # Force limits, contact detection, controller errors, posture limits and frankapy's
+  # virtual walls / joint limits still apply.
+  path_checks: false
+  stream_poll_seconds: 0.01
+  # frankapy defaults are k=[600,600,600,600,250,150,50], d=[50,50,50,50,30,25,15]. Wrist k
+  # raised (damping kept) so the fixed wrist settles within the 3 mrad orientation finish;
+  # executor caps are k<=[1000x4,500,300,150], d<=[60x4,35,30,15]. Not yet tuned on hardware.
+  # 2026-11-24 run 163112: joint 6 stalled ~23 mrad (about 7 N m) under k6=300 -> k6=600, d6=30.
+  stream_k_gains: [600, 600, 600, 600, 400, 600, 150]
+  stream_d_gains: [50, 50, 50, 50, 30, 30, 15]
+  stream_settle_max_offset: 0.02   # friction-offset correction cap per joint (rad)
+  stream_torque_margin: 20.0       # frankapy Cartesian-torque backstop margin over bias (N m)
+  stream_endpoint_tolerance: 0.005
+  stream_settle_seconds: 2.0
+  stream_max_tip_lag: 0.006
+  stream_min_ramp_seconds: 0.3
+  poll_seconds: 0.02
+  min_segment_seconds: 0.2
+  max_joint_velocity: 0.15
+  max_joint_acceleration: 0.3
+  joint_tolerance: 0.01
+  endpoint_joint_tolerance: 0.003
+  probe_endpoint_joint_tolerance: 0.006
+  tip_tolerance: 0.004
+  orientation_tolerance: 0.03
+  extra_clearance: 0.002
+  startup_min_height: 0.2
+  # Factory frankapy joint impedances. 2026-11-24: with [600,600,600,600,250,150,300] (and q7=50
+  # before) the wrist half-turn lagged ~10 mrad on joint 7 and stopped with
+  # joint_motion_generator_acceleration_discontinuity (runs 20261122-235107-touch,
+  # 20261124-131624-touch); every successful joint move so far used factory values.
+  joint_impedances:
+  - 3000
+  - 3000
+  - 3000
+  - 2500
+  - 2500
+  - 2000
+  - 2000
