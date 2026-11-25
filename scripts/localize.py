@@ -6,11 +6,10 @@ import sys
 
 import mujoco
 import numpy as np
-from scipy.optimize import least_squares
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from kilo.config import load_config
-from kilo.localization.common import SEARCH_MODE_OFFSET
+from kilo.localization.common import SEARCH_MODE_OFFSET, SNAKE_SPACING
+from kilo.localization.plate import localize_plate
 from kilo.localization.probenav import probemove, travelmove
 from kilo.localization.search import generate_snake_waypoints
 from kilo.sim.control import GRIPPER_ACTUATOR, solve_ik
@@ -18,56 +17,9 @@ from kilo.sim.scene import TABLE_TOP_Z, build_scene
 
 
 def run(model, data, viewer, waypoints):
-    for point in waypoints[1:]:
-        hit = probemove(point, model, data, viewer)
-        if hit is not None:
-            break
-    else:
-        raise RuntimeError("Sweep ended without touching the plate")
-
-    def touch_from(origin, outward):
-        _, target = travelmove(np.array([origin, outward]), model, data, viewer)
-        print("Crossing from", origin, "toward", target, flush=True)
-        contact = probemove(target, model, data, viewer)
-        if contact is None:
-            raise RuntimeError("Crossing ended without touching the plate")
-        print("Contact:", contact, flush=True)
-        return contact
-
-    first, force = hit
-    print("First contact:", hit, flush=True)
-    normal = force / np.linalg.norm(force)
-    opposite, opposite_force = touch_from(first, -normal)
-    midpoint = (first + opposite) / 2
-    tangent = np.array([-normal[1], normal[0]])
-    left, left_force = touch_from(midpoint, tangent)
-    right, right_force = touch_from(midpoint, -tangent)
-
-    # The tip centre sits one shaft radius outside the contacted face or corner.
-    cfg = load_config()
-    half_sizes = np.array(cfg["box"]["size"][:2]) / 2
-    radius = cfg["peg"]["shaft_radius"]
-    samples = np.array([first, opposite, left, right])
-    forces = np.array([force, opposite_force, left_force, right_force])
-    normals = forces / np.linalg.norm(forces, axis=1, keepdims=True)
-
-    def residual(pose):
-        center, angle = pose[:2], pose[2]
-        c, s = np.cos(angle), np.sin(angle)
-        axes = np.array([[c, -s], [s, c]])
-        local = (samples - center) @ axes
-        closest = np.clip(local, -half_sizes, half_sizes)
-        offsets = local - closest
-        distances = np.linalg.norm(offsets, axis=1)
-        predicted = offsets @ axes.T / np.maximum(distances[:, None], 1e-9)
-        # Forces can include friction, so use them primarily to resolve yaw.
-        return np.r_[distances - radius, (.004 * (predicted - normals)).ravel()]
-
-    fits = [least_squares(residual, np.r_[samples.mean(axis=0), yaw])
-            for yaw in np.linspace(0, np.pi, 12, endpoint=False)]
-    pose = min(fits, key=lambda fit: fit.cost).x
-    return pose[:2], np.degrees(pose[2]) % 180
-
+    return localize_plate(waypoints,
+                          lambda point: probemove(point, model, data, viewer),
+                          lambda ray: travelmove(ray, model, data, viewer))
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -81,7 +33,7 @@ def main():
     else:
         model = build_scene(box_xy=args.box[:2], box_yaw=args.box[2])
     data = mujoco.MjData(model)
-    points = generate_snake_waypoints(.06)
+    points = generate_snake_waypoints(SNAKE_SPACING)
     q, error = solve_ik(model, "peg_tip", np.r_[points[0], TABLE_TOP_Z + SEARCH_MODE_OFFSET],
                         np.array([[0., -1., 0.], [1., 0., 0.], [0., 0., 1.]]))
     if error > .005:

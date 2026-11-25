@@ -34,7 +34,7 @@ kilo/
   localization/   Phase 1: contact detection, box filter, hole-search filter
   insertion/      Phase 2: spiral baseline, MuJoCo env, PPO training
   sim/            MuJoCo scene construction (Panda + peg + box)
-  robot/          Real-robot interface (wraps the course control stack)
+  robot/          FrankaPy adapter for Phase 1 hardware localization
 configs/          Shared parameters (hole radius R, clearance, thresholds)
 tests/            Unit tests for the pure-Python pieces
 proposal/         LaTeX proposal; grows into the final report
@@ -52,7 +52,7 @@ Status of each module:
 | `insertion/env.py` | Stub | Phase 2 |
 | `sim/scene.py`, `sim/geometry.py` | Working: Panda + table + shelves, peg, base with hole | Phase 2 |
 | `sim/control.py` | Working: IK and gravity-compensated joint PD (placeholder for impedance control) | Phase 2 |
-| `robot/interface.py` | Abstract interface only | Phase 1 |
+| `robot/frankapy_localization.py` | FrankaPy joint-motion adapter for the shared plate search | Phase 1 |
 
 ## Setup
 
@@ -115,6 +115,42 @@ inserts it when aligned, and jams when 2 mm off (the case Phase 2 is for).
 | Peg over the hole | Base from above |
 | --- | --- |
 | ![Peg close-up](docs/scene_peg_closeup.png) | ![Base top](docs/scene_base_top.png) |
+
+## Hardware localization
+
+Run from the project root in the course ROS and FrankaPy environment, with the
+peg already grasped. Both entry points use the same snake, four contacts,
+and plate fit. The search rectangle in the robot base frame spans
+0.32 to 0.61 m in x and −0.18 to +0.18 m in y.
+
+```bash
+python scripts/localize_live.py --table-z 0.0072
+python scripts/localize_live.py --table-z 0.0072 --execute
+```
+
+The first command prints the sweep size without connecting. The second moves
+the arm. The example uses the measured tabletop height on the lab station.
+Without `--table-z`, the runner uses the Lab 2 model's tabletop height.
+Keep the arm stationary with the peg grasped for the initial five seconds.
+The runner samples Fx, Fy, and Fz at a target 20 Hz, saves the raw readings
+to `force-zero-*.csv`, and subtracts their per-axis means before motion.
+The sweep starts after the recording obtains at least 10 samples per second
+on average.
+
+The live adapter uses the MuJoCo peg-tip model to solve joint waypoints along
+each sweep leg or crossing. It uses Lab 2's 0.01 rad joint tracking tolerance,
+0.5 mm and 0.003 rad IK tolerances, 0.30 rad/s² joint acceleration, and
+0.5 s minimum skill duration. The joint speed limit is 0.15 rad/s for joints
+1–6 and 0.225 rad/s for joint 7, which rotates about tool Z. Travel waits for
+each skill.
+Probes track slow drift in FrankaPy's horizontal wrench and stop immediately
+above 5 N over that baseline. The robot records the first hit, waits for fresh
+stationary feedback, then lifts vertically from the measured tip position.
+Recoverable FrankaPy communication or joint-generator errors and short
+waypoints can retry up to twice from the measured joints after the controller
+returns to idle. Collision and reflex reports end the run. The simulation uses
+a 5 N horizontal contact threshold. The 20 N force cutoff stays separate.
+The result is the plate center and yaw modulo 180°.
 
 ## Working together
 

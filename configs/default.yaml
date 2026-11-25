@@ -29,14 +29,14 @@ contact:
 
 snake_search:                  # initial plate sweep; see kilo/localization/common.py
   corners:                     # rectangle in the robot base frame, metres
-    - [0.32, -0.20]
-    - [0.70, -0.20]
-    - [0.70, 0.20]
-    - [0.32, 0.20]
+    - [0.32, -0.18]
+    - [0.61, -0.18]
+    - [0.61, 0.18]
+    - [0.32, 0.18]
   tabletop_height: 0.0001        # z of the tabletop
   ee_float_height: 0.03        # height above the tabletop while searching
   virtual_probe_length: 0.047625  # shaft length + half the square top
-  force_threshold: 2.0         # N, Cartesian; distinct from contact.tau_ext_threshold
+  force_threshold: 5.0         # N, horizontal Cartesian force
 
 hole_search:
   num_particles: 4000

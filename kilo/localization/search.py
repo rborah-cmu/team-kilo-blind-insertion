@@ -5,6 +5,8 @@ The probe and the pin are the same part. Sweep the workspace in
 and treat a Cartesian force above ``FORCE_THRESHOLD`` as contact.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 

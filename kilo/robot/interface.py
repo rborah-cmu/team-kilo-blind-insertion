@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from kilo.localization.contact import ContactDetector
+from kilo.localization.archive.contact import ContactDetector
 
 
 @dataclass

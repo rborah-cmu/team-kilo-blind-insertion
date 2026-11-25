@@ -1,5 +1,7 @@
 """Contact-guided probe motion for the MuJoCo scene (world coordinates)."""
 
+from __future__ import annotations
+
 import time
 
 import mujoco
@@ -11,7 +13,7 @@ from kilo.sim.scene import TABLE_TOP_Z
 from .common import (
     FORCE_THRESHOLD, POS_EPS, PROBE_LOOKAHEAD, SEARCH_MODE_HEIGHT,
     SEARCH_SPACE_CORNERS, SEARCH_SPEED, TRAVEL_MODE_HEIGHT, TRAVEL_SPEED,
-    VIRTUAL_PROBE_LENGTH,
+    VIRTUAL_PROBE_LENGTH, probe_rotation,
 )
 from .search import generate_ray_probe_waypoints
 
@@ -66,18 +68,7 @@ def _move(target, model, data, viewer, detect_contact, max_time):
     length = np.linalg.norm(delta)
     direction = delta / length if length > 0 else np.zeros(3)
 
-    # Peg +z points upward, so the hand faces the tabletop. Align peg/gripper
-    # x perpendicular to horizontal travel; preserve yaw on vertical moves.
-    yaw = np.arctan2(direction[1], direction[0]) + np.pi / 2
-    current = data.site_xmat[site].reshape(3, 3)
-    current_yaw = np.arctan2(current[1, 0], current[0, 0])
-    if np.linalg.norm(direction[:2]) < 1e-9:
-        yaw = current_yaw
-    else:
-        # The parallel-jaw gripper is symmetric under a 180-degree turn.
-        yaw += np.pi * np.round((current_yaw - yaw) / np.pi)
-    c, s = np.cos(yaw), np.sin(yaw)
-    rotation = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.]])
+    rotation = probe_rotation(direction, data.site_xmat[site].reshape(3, 3))
     deadline = data.time + max_time
     next_frame = data.time
     wall_start, sim_start = time.monotonic(), data.time

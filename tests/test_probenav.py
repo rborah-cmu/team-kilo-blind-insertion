@@ -54,7 +54,7 @@ def test_travel_lifts_crosses_then_lowers(monkeypatch):
 
     monkeypatch.setattr(probenav, "_move", record)
     start, end = probenav.travelmove(np.array([[.60, .15], [1., 0.]]), model, data)
-    np.testing.assert_allclose(start, [.70, .15])
+    np.testing.assert_allclose(start, [.61, .15])
     np.testing.assert_allclose(end, [.32, .15])
     np.testing.assert_allclose([t[2] for t, _ in legs], TABLE_TOP_Z + np.array([.10, .10, .03]))
     for target, reached in legs:
