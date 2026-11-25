@@ -82,6 +82,35 @@ def test_probe_stops_once_then_lifts_from_the_measured_tip(monkeypatch):
     np.testing.assert_allclose(force, [6., 0.])
 
 
+@pytest.mark.parametrize("vertical_force", [0., 6.])
+def test_hole_press_uses_vertical_force_and_lifts(monkeypatch, vertical_force):
+    robot, arm, state, _, start, rotation = make_robot(monkeypatch)
+    xy = start[:2] + [.004, 0.]
+    target_z = .056
+    surface_joints, _ = solve_ik(robot.model, "peg_tip", [*xy, .059], rotation, q0=state.joints)
+    commands = []
+    stops = []
+
+    def goto(goal, **kwargs):
+        block = kwargs["block"]
+        commands.append(block)
+        state.joints = np.asarray(goal) if block or not vertical_force else surface_joints.copy()
+
+    arm.goto_joints = goto
+    arm.stop_skill = lambda: stops.append(True)
+    arm.get_ee_force_torque = lambda: (
+        [-6., 0., -vertical_force, 0., 0., 0.] if commands and not commands[-1] else np.zeros(6)
+    )
+    tip, contact = robot.press(xy, target_z)
+
+    assert commands == [True, True, True, False, True]
+    assert len(stops) == int(bool(vertical_force))
+    assert contact == bool(vertical_force)
+    np.testing.assert_allclose(tip, [*xy, .059 if vertical_force else target_z], atol=1e-4)
+    lifted, _ = robot._pose(state.joints)
+    np.testing.assert_allclose(lifted, [*xy, robot.travel_z], atol=1e-4)
+
+
 @pytest.mark.parametrize("reflex", [False, True])
 def test_waypoint_retry_uses_measured_joints_and_never_retries_reflex(monkeypatch, reflex):
     robot, arm, state, clock, start, _ = make_robot(monkeypatch)

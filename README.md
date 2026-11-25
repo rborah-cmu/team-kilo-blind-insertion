@@ -133,7 +133,7 @@ the arm. The example uses the measured tabletop height on the lab station.
 Without `--table-z`, the runner uses the Lab 2 model's tabletop height.
 Keep the arm stationary with the peg grasped for the initial five seconds.
 The runner samples Fx, Fy, and Fz at a target 20 Hz, saves the raw readings
-to `force-zero-*.csv`, and subtracts their per-axis means before motion.
+to `force-zero.csv` in the run directory, and subtracts their per-axis means before motion.
 The sweep starts after the recording obtains at least 10 samples per second
 on average.
 
@@ -150,7 +150,22 @@ Recoverable FrankaPy communication or joint-generator errors and short
 waypoints can retry up to twice from the measured joints after the controller
 returns to idle. Collision and reflex reports end the run. The simulation uses
 a 5 N horizontal contact threshold. The 20 N force cutoff stays separate.
-The result is the plate center and yaw modulo 180°.
+After estimating the plate center and yaw modulo 180°, the live runner measures
+the top surface height and starts the hole particle filter. The first two
+candidates come from the CAD offset and the two possible plate orientations.
+The filter chooses subsequent candidates using the measured presses. During
+each descent, a 5 N vertical force residual ends the press, and travel of at
+least 2 mm below the measured surface counts as a drop. The nominal radial
+capture clearance is 0.2 mm. Print and calibration error can make drops hard to
+find, so the run can end with the hole unconfirmed.
+
+Each live run saves the plate fit, forces, peg-tip paths, and hole search under
+`runs/real`. Pass `--out` to save to a different folder. Generate the restored
+GitHub localization charts and hole plot from the recorded data with:
+
+```bash
+python scripts/real/view_localization.py --latest
+```
 
 ## Working together
 

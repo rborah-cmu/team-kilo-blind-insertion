@@ -40,6 +40,7 @@ snake_search:                  # initial plate sweep; see kilo/localization/comm
 
 hole_search:
   num_particles: 4000
+  max_presses: 60
   drop_depth: 0.002            # tip this far below the top surface counts as "in the hole"
   stop_std: 0.001              # stop refining when estimate std falls below this
 

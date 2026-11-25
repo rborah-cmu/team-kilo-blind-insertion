@@ -38,6 +38,7 @@ BASELINE_SECONDS = 5.0      # s, slower drift tracking while nearly stationary
 STATIONARY_SPEED = 0.01     # Lab 2 stationary joint speed, rad/s
 SETTLE_TIMEOUT = 5.0
 MOTION_RETRIES = 2
+HOLE_PROBE_SPEED = 0.005     # m/s during the guarded descent
 MOTION_DISCONTINUITIES = frozenset({
     "joint_motion_generator_velocity_discontinuity",
     "joint_motion_generator_acceleration_discontinuity",
@@ -51,13 +52,14 @@ class JointTrackingError(RuntimeError):
 class FrankaLocalizer:
     """Map the simulation's peg-tip motions to FrankaPy joint skills."""
 
-    def __init__(self, arm, table_z):
+    def __init__(self, arm, table_z, *, record_sample=None):
         self.arm = arm
         self.model = build_scene()
         self.data = mujoco.MjData(self.model)
         self.search_z = table_z + SEARCH_MODE_OFFSET
         self.travel_z = table_z + TRAVEL_MODE_OFFSET
         self.force_zero = None
+        self.record_sample = record_sample
 
     def zero_forces(self, log_path=None):
         """Average a stationary wrench recording before commanding any motion."""
@@ -160,26 +162,33 @@ class FrankaLocalizer:
         force = self.force_zero - wrench[:3]
         if np.linalg.norm(force) > FORCE_LIMIT:
             raise RuntimeError(f"Probe exceeded {FORCE_LIMIT:g} N")
-        return force[:2]
+        return force
 
-    def _poll_for_contact(self, baseline, previous_tip):
+    def _poll_for_contact(self, baseline, previous_tip, vertical_contact):
         previous_time = time.monotonic()
         while True:
             force = self._probe_force() - baseline
-            if np.linalg.norm(force) > CONTACT_THRESHOLD:
+            tip = None
+            now = time.monotonic()
+            if self.record_sample is not None:
+                tip, _ = self._pose(self._read_joints())
+                self.record_sample(now, tip, force)
+            magnitude = abs(force[2]) if vertical_contact else np.linalg.norm(force[:2])
+            if magnitude > CONTACT_THRESHOLD:
                 return force
             if self.arm.is_skill_done(ignore_errors=False):
                 return None
-            tip, _ = self._pose(self._read_joints())
-            now = time.monotonic()
-            travel = np.linalg.norm(tip - previous_tip)
-            baseline += min(1., travel / BASELINE_TRAVEL
-                            + (now - previous_time) / BASELINE_SECONDS) * force
-            previous_tip, previous_time = tip, now
+            if not vertical_contact:
+                if tip is None:
+                    tip, _ = self._pose(self._read_joints())
+                travel = np.linalg.norm(tip - previous_tip)
+                baseline[:2] += min(1., travel / BASELINE_TRAVEL
+                                    + (now - previous_time) / BASELINE_SECONDS) * force[:2]
+                previous_tip, previous_time = tip, now
             time.sleep(POLL_SECONDS)
 
     def _move_to_waypoint(self, waypoint, rotation, joints, thresholds, *,
-                          detect_contact=False, speed=SEARCH_SPEED):
+                          detect_contact=False, vertical_contact=False, speed=SEARCH_SPEED):
         for attempt in range(MOTION_RETRIES + 1):
             goal, _ = solve_ik(self.model, "peg_tip", waypoint, rotation, q0=joints)
             goal_tip, goal_rotation = self._pose(goal)
@@ -207,7 +216,7 @@ class FrankaLocalizer:
                                      block=not detect_contact, ignore_errors=False,
                                      ignore_virtual_walls=False, force_thresholds=thresholds,
                                      skill_desc="Kilo plate probe" if detect_contact else "Kilo plate travel")
-                force = self._poll_for_contact(baseline, current_tip) if detect_contact else None
+                force = self._poll_for_contact(baseline, current_tip, vertical_contact) if detect_contact else None
                 if force is None:
                     return self._check_joints(goal), None
             except Exception as error:
@@ -227,9 +236,10 @@ class FrankaLocalizer:
             self.arm.stop_skill()
             stopped_joints = self._read_joints()
             tip, _ = self._pose(stopped_joints)
-            return self._wait_stationary(), (tip[:2], force)
+            return self._wait_stationary(), (tip, force)
 
-    def _move(self, target, detect_contact=False, *, vertical=False):
+    def _move(self, target, detect_contact=False, *, vertical=False, vertical_contact=False,
+              position_eps=POS_EPS):
         if self.force_zero is None:
             raise RuntimeError("Zero the force readings before moving the arm")
         joints = self._read_joints()
@@ -238,17 +248,18 @@ class FrankaLocalizer:
             target = np.r_[start[:2], target]
         delta = target - start
         length = float(np.linalg.norm(delta))
-        if length < POS_EPS:
+        if length < position_eps:
             return None
         direction = delta / length
         rotation = probe_rotation(direction, current_rotation)
-        speed = SEARCH_SPEED if detect_contact else TRAVEL_SPEED
+        speed = HOLE_PROBE_SPEED if vertical_contact else SEARCH_SPEED if detect_contact else TRAVEL_SPEED
         steps = int(np.ceil(length / PROBE_LOOKAHEAD))
         # Franka-Interface uses per-axis limits in the raw wrench frame.
         thresholds = (np.abs(self.force_zero) + FORCE_LIMIT).tolist() + [10.] * 3
         for waypoint in np.linspace(start, target, steps + 1)[1:]:
             joints, contact = self._move_to_waypoint(waypoint, rotation, joints, thresholds,
-                                                      detect_contact=detect_contact, speed=speed)
+                                                      detect_contact=detect_contact,
+                                                      vertical_contact=vertical_contact, speed=speed)
             if contact is not None:
                 return contact
         return None
@@ -269,6 +280,19 @@ class FrankaLocalizer:
     def probe(self, xy):
         contact = self._move(np.r_[xy, self.search_z], detect_contact=True)
         if contact is not None:
-            print(f"Contact at {np.linalg.norm(contact[1]):.2f} N XY. Lifting vertically.", flush=True)
+            tip, force = contact
+            print(f"Contact at {np.linalg.norm(force[:2]):.2f} N XY. Lifting vertically.", flush=True)
             self._move(self.travel_z, vertical=True)
-        return contact
+            return tip[:2], force[:2]
+        return None
+
+    def press(self, xy, target_z):
+        """Descend at fixed XY, then lift. Return measured tip and whether Z force stopped it."""
+        self._move(self.travel_z, vertical=True)
+        self._move(np.r_[xy, self.travel_z], position_eps=1e-6)
+        self._move(target_z + .012, vertical=True)
+        contact = self._move(target_z, detect_contact=True, vertical=True, vertical_contact=True,
+                             position_eps=1e-6)
+        tip = contact[0] if contact is not None else self._pose(self._read_joints())[0]
+        self._move(self.travel_z, vertical=True)
+        return tip, contact is not None

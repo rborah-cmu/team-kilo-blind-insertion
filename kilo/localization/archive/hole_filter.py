@@ -76,15 +76,21 @@ class HoleSearchFilter:
         if self.effective_sample_size() < 0.5 * len(self.weights):
             self._resample(jitter_scale=0.5 * std)
 
-    def next_press(self, num_candidates: int = 400) -> np.ndarray:
+    def next_press(self, num_candidates: int = 400, *, exclude=()) -> np.ndarray | None:
         """Pick the press that covers the most remaining probability.
 
         Candidates are drawn from the particles themselves. Covering the most
         mass maximizes what a "no drop" result eliminates, and it is also the
         press most likely to find the hole.
         """
-        idx = self.rng.choice(len(self.particles), size=min(num_candidates, len(self.particles)),
-                              replace=False, p=self.weights)
+        available = self.weights.copy()
+        for point in exclude:
+            available[np.linalg.norm(self.particles - point, axis=1) < self.detect_radius] = 0.
+        count = np.count_nonzero(available)
+        if not count:
+            return None
+        idx = self.rng.choice(len(self.particles), size=min(num_candidates, count),
+                              replace=False, p=available / available.sum())
         candidates = self.particles[idx]
         dists = np.linalg.norm(candidates[:, None, :] - self.particles[None, :, :], axis=2)
         mass = (dists < self.detect_radius) @ self.weights
