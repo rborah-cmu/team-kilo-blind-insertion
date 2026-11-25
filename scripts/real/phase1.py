@@ -140,13 +140,20 @@ def cmd_home(args, cfg, robot, log):
     from frankapy import FrankaConstants as FC
     home = np.asarray(FC.HOME_JOINTS, float)
     st = robot.state()
+    # Fail closed: always check the joint path against the shelf model before moving.
     geometry = getattr(robot, "geometry", None)
-    if geometry is not None:
+    if geometry is None:
+        from kilo.robot.planning import FrankaGeometry
+        model = (cfg.get("joint_executor") or {}).get("model", "configs/frankapy_geometry.json")
         try:
-            samples, _ = geometry.check_joint_edge(np.asarray(st.q, float), home, min_clearance=.002)
+            geometry = FrankaGeometry(ROOT / model, cfg)
         except Exception as exc:
-            raise SafetyStop(f"the joint path to home fails the shelf check ({exc}); move the arm by hand first")
-        print(f"joint path to home checked: {len(samples)} samples clear the shelf model")
+            raise SafetyStop(f"cannot load the shelf/planning model ({exc}); refusing to move home")
+    try:
+        samples, _ = geometry.check_joint_edge(np.asarray(st.q, float), home, min_clearance=.002)
+    except Exception as exc:
+        raise SafetyStop(f"the joint path to home fails the shelf check ({exc}); move the arm by hand first")
+    print(f"joint path to home checked: {len(samples)} samples clear the shelf model")
     print(f"largest joint change {np.degrees(np.max(np.abs(home - st.q))):.1f} deg")
     confirm(args, "move the arm to frankapy home (one 8 s joint move)")
     fa.goto_joints(home.tolist(), duration=8, ignore_errors=False, ignore_virtual_walls=False, skill_desc="Kilo home")

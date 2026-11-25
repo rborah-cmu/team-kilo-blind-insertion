@@ -1,6 +1,127 @@
-# Agent handoff: Team Kilo, Phase 1 on the real Franka (2026-11-23)
+# Agent handoff: Team Kilo, Phase 1 on the real Franka (2026-11-24)
 
-## CURRENT: hardware disconnected; free-air validation remains incomplete
+## CURRENT retry lift succeeded but skill completion timing is inconsistent
+
+- User authorized checked vertical lift to .1072 then full localization retry.
+  Run `20261124-171557-localize`: lift completed at
+  (.5590436,-.0316958,.1068714), peak residual 1.894 N. Repositioning/descent
+  completed, then search reached y=-.09. Three discontinuity recoveries occurred.
+  No block contact in this retry, and no fitted pose or verification.
+- Final probe path 13 failed at its first segment: expected duration 1.0164 s;
+  is_skill_done reported true at .1414 s, while measured tip remained
+  (.5647959,-.0901323,.0318557), max endpoint joint error .03780 rad.
+  Cached residual at failure .0929 N; current errors and all contact/collision
+  flags clear. Historical acceleration discontinuity flag is insufficient to
+  diagnose this new failure. No force threshold/endpoint tolerance changes made.
+- Critically, termination snapshot was idle with q_d at the prior endpoint;
+  error_diagnostics ~.12 s later showed robot_mode=2 and q_d beginning to change.
+  Fresh post-run state then showed the arm had reached near the commanded 10 mm
+  endpoint. This suggests asynchronous skill start/completion reporting, but
+  action status/result and goal IDs were NOT captured, so root cause is unproven.
+  Do not just ignore premature completion or enable another retry for this case.
+- Read installed frankapy methods (no motion): is_skill_done uses action client's
+  wait_for_result and sets fa._in_skill=False on a result; stop_skill only calls
+  cancel_goal when _connected and _in_skill. Our adapter stop also gates on
+  _in_skill. Review command ownership/cancellation and action result lifecycle
+  before another run; an early done report can clear that cancellation gate.
+- Fresh post-stop snapshot: idle, no active errors, tip
+  (.5547466,-.0900570,.0316294), q
+  [-.160839,.449384,-.0000695,-2.171550,-.000181,2.620300,2.195291].
+  `runs/real/lab/after-fast-retry-state.json`. Arm is LOW, not home.
+- Raw retry log, charts and diagnosis saved locally under
+  `runs/real/lab/20261124-171557-localize/`. Retreat completion fix remains staged
+  and unchanged. No further hardware motion or new approval pending.
+
+## CURRENT faster localization touched block then stopped on retreat bookkeeping
+
+- User authorized full faster localization. Run `20261124-170644-localize`
+  traveled to first corner, descended, and searched through y=-.03. Six pure
+  motion-generator discontinuity recoveries occurred (two travel, four probes).
+  These remain an unresolved source of delay. All raw logs copied locally to
+  `runs/real/lab/20261124-170644-localize/`; charts generated locally.
+- Audit path 20 DID detect contact: tip (.5621308,-.0317158,.0316534), peak residual
+  5.4834 N; final force residual (-3.6200,-4.0613,.6850) N. User explicitly
+  confirmed seeing the peg touch the block. `contacts: []` in the localizer result
+  and generated report is misleading: backend retreat failed before probe()
+  returned to localizer bookkeeping. Completed contact audit and last_probe
+  samples preserve this detection. No fitted block pose or verification yet.
+- Path 21 was the 3 mm retreat, whose endpoint was reached (max joint error
+  .434 mrad <3 mrad tolerance, no premature end, no active controller errors).
+  Existing completion code incorrectly required the 4 N CONTACT debounce to
+  clear even for travel. After bias sampling under load, unloading produced an
+  11.82 N final residual (<20 N safety limit), so this guard rejected completion.
+  This final stop was not a new active controller fault or a missed endpoint.
+- Fixed only non-probing completion: completed travel no longer requires
+  residual <=contact threshold; both absolute and adaptive 20 N safety checks,
+  early-stop refusal, endpoint/posture/geometry checks remain. Probe debounce
+  remains unchanged. Successful probe audits now also save force_n/bias_n before
+  retreat, so those values survive later failure. 48 executor/experiment tests
+  passed, including load release, excessive force, early end and failed retreat.
+- Fix staged on lab computer and compiled inside Docker; backup
+  `/tmp/kilo-before-retreat-completion-fix-20261124.tar.gz`. Remote hashes match
+  local. NO further motion since the stopped run.
+- Fresh post-stop snapshot: `runs/real/lab/after-fast-localize-state.json`, idle,
+  no current errors; tip (.5590748,-.0317013,.0314833), q
+  [-.056547,.445464,-.0000695,-2.179242,-.000184,2.624245,2.299669]. Arm remains
+  low near the block, not at home. User was asked to leave arm/block fixed.
+- Vertical lift at current xy to z=.1072 passes offline geometry checks
+  (2 commands, ~3.79 s commanded). Next concrete motion proposal: lift, then
+  rerun full faster localization with up to two verification rounds. Await
+  fresh user approval/e-stop coverage; the earlier run's authorization has ended.
+
+## CURRENT hardware result November 24 faster free-air trial passed
+
+- Lab computer IP changed to 172.26.5.186 (student, iam-camilo). SSH key works;
+  use HostKeyAlias=172.26.113.205 with the existing known_hosts entry to verify
+  the same trusted host. Docker frankapy_docker and Control PC server running.
+- Backed up remote config/executor to `/tmp/kilo-before-fast-probes-20261124.tar.gz`
+  and locally under `runs/real/lab/pre-fast-update-20261124/`. Remote comparison
+  showed only the intended probe_step changes. Staged config and two executor
+  files; Docker compile passed, SHA-256 matches local tested files.
+- User confirmed e-stop coverage/clear path/peg grip and authorized wrist setup,
+  faster 20 mm +x free-air probe and return. Run `20261124-170432-touch` completed
+  all four audited paths (startup, small travel correction, probe, return), no
+  safety stop/recovery. Logs copied to `runs/real/lab/20261124-170432-touch/`.
+- Startup: 19.63 s commanded, max endpoint joint error .303 mrad. Probe:
+  19.823 mm traveled, two ~10 mm segments, 2.840 s recorded duration, 74 samples,
+  no contact, peak residual 2.904 N (<4 N threshold), no stall. Effective sample
+  rate ~25.7 Hz despite configured 20 ms sleep; do not claim measured 50 Hz.
+  Probe endpoint joint error <=.413 mrad, wrist yaw error <=.363 mrad.
+- Return: 1.100 s commanded, endpoint joint error .689 mrad; tip return error
+  .220 mm. Fresh read-only post-check: idle, no current errors; tip
+  (0.3072577,-0.0001480,0.4389012), q approximately
+  [-.000321,-.784768,-.0000008,-2.356837,-.000191,1.572398,2.355547].
+  Snapshot `runs/real/lab/after-fast-free-air-state.json`. Historical motion
+  discontinuity flags persist; they were not active errors during this trial.
+- Initial localization travel to (.565,-.21,.1072), guarded descent to .0322,
+  and full first sweep to (.32,-.21,.0322) checked offline from that snapshot.
+  Evidence `fast-localization-start-check.json` in local lab runs folder.
+  Subsequent adaptive paths still replan from measured state during execution.
+- Full localization has NOT run with faster code. Next: obtain confirmation for
+  full search/face probing/up to two verification rounds, with e-stop coverage
+  maintained and block fixed. No full-localization motion authorization yet.
+
+## Offline performance update November 24
+
+- User requested faster localization. Added `joint_executor.probe_step` (default
+  falls back to dense sampling, real_planned.yaml selects 10 mm). Probe adapter
+  merges checked 2 mm IK/collision samples into fewer commands, retaining edge
+  certification, full-ray preflight, straightness/orientation tests and continuous
+  force polling. Existing motion speeds/caps/thresholds/gains and `path_checks`
+  setting are unchanged. Execution remains segments, not streaming.
+- Matched full nominal offline localization: both verified; 446.28 -> 293.60 s
+  virtual time (34.2% less), 597 -> 167 commands. Peak simulated contact residual
+  7.99 -> 10.20 N; hardware force transients remain to be checked. Joint caps
+  remain .15 rad/s and .3 rad/s². Representative 245 mm sweep: 68.62 -> 30.16 s;
+  face probe: 12.26 -> 5.70 s. No hardware operations for this update.
+- 54 executor/experiment/geometry/touch tests passed, including new mid-segment
+  contact and fault-stop regressions. Benchmark tool:
+  `scripts/real/benchmark_localization_motion.py`; evidence:
+  `runs/real/motion-speed/{before.json,after.json,full-before/,full-after/}`.
+- Local changes only; no commit/push/deployment. Prior physical-state notes below
+  are historical; this update did not reconnect to or inspect the robot.
+
+## Historical November 23 hardware disconnection and incomplete validation
 
 - User confirmed on Nov 23 that the lab computer and arm were disconnected.
   SSH to 172.26.113.205 times out. No motion or remote changes this session.

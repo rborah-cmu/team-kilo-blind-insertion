@@ -36,3 +36,4 @@ Project_Proposal.pdf
 Thumbs.db
 .vscode/
 .idea/
+deploy/*.tgz

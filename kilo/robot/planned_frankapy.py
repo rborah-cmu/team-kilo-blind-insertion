@@ -128,6 +128,7 @@ class PlannedFrankaPyBackend(FrankaPyBackend):
         try:
             result = self.executor.execute(path, speed, settings, detect_contact=detect)
             record.update(completed=True, contact=result.contact, stop_tip=result.tip.tolist(),
+                          force_n=result.force.tolist(), bias_n=result.bias.tolist(),
                           peak_force_n=result.peak_force, distance_m=result.distance)
             return result
         except BaseException as exc:
@@ -224,7 +225,7 @@ class PlannedFrankaPyBackend(FrankaPyBackend):
             st = self.state()
             self.hand_workspace.check(st.tip[:2], np.asarray(target)[:2], st.yaw, yaw)
             # Entire ray checked before any motion. No replay of hypothetical contacts.
-            p = self.executor.plan(target, yaw)
+            p = self.executor.plan(target, yaw, max_step=self.executor.probe_step)
             return p, self._run(p, cfg.speed, cfg, detect=True)
 
         path, result = self._with_recovery("probe", attempt)

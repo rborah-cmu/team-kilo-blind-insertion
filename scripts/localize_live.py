@@ -1,4 +1,10 @@
-"""Localize the plate and hole using the physical Franka."""
+"""Localize the plate and hole using the physical Franka.
+
+A live window shows the box estimate while the run is going (contacts, force arrows,
+where the box can be, provisional then final plate fit, hole presses and particles,
+and the force trace). Without a display it still writes <run>/live.png every second.
+Use --no-live to turn it off.
+"""
 
 import argparse
 from datetime import datetime
@@ -26,6 +32,9 @@ def main():
                         help="tabletop height in robot base metres (default: Lab 2 scene)")
     parser.add_argument("--execute", action="store_true", help="send motion commands to the arm")
     parser.add_argument("--out", type=Path, help="run directory for measurements and plot inputs")
+    parser.add_argument("--no-live", action="store_true", help="do not show the live box-estimate view")
+    parser.add_argument("--no-window", action="store_true",
+                        help="live view as <run>/live.png only (no window), e.g. over SSH")
     args = parser.parse_args()
 
     waypoints = generate_snake_waypoints(SNAKE_SPACING)
@@ -47,9 +56,19 @@ def main():
                                         directional_residual=True)))
     samples = {}
     trace = []
+    view = None
+    if not args.no_live:
+        from kilo.localization.live_view import LiveView
+        view = LiveView(out, SEARCH_SPACE_CORNERS, np.asarray(cfg["box"]["size"][:2]) / 2,
+                        cfg["peg"]["shaft_radius"], thresholds=(CONTACT_THRESHOLD, FORCE_LIMIT),
+                        window=not args.no_window)
+        view.status("zeroing forces (keep the arm still)")
+        print(f"Live view: window if a display is available, and {out / 'live.png'}", flush=True)
 
     def record_sample(now, tip, residual):
         trace.append((now - start, *tip, *residual))
+        if view is not None:
+            view.sample(now - start, tip, residual)
 
     def record_probe(label, action):
         trace.clear()
@@ -70,6 +89,9 @@ def main():
             tip_xy, force_xy = contact
             run["contacts"].append(dict(kind="side", label=label, xy=tip_xy.tolist(),
                                         force_xy=force_xy.tolist(), peak_force=float(np.linalg.norm(force_xy))))
+            if view is not None:
+                view.contact(label, tip_xy, force_xy)
+                view.status(f"{len(run['contacts'])} contact(s); searching")
         return contact
 
     def press(xy, z, label):
@@ -79,8 +101,13 @@ def main():
         zero_log = out / "force-zero.csv"
         robot.zero_forces(zero_log)
         print(f"Raw force zero samples saved to {zero_log}", flush=True)
+        if view is not None:
+            view.status("snake sweep for the first contact")
         robot.position_at(waypoints[0])
         center, angle = localize_plate(waypoints, probe, robot.travel)
+        if view is not None:
+            view.plate(center, angle)
+            view.status("plate found; hole search")
         gaps = point_gaps(center, np.radians(angle), [c["xy"] for c in run["contacts"]],
                           np.asarray(cfg["box"]["size"][:2]) / 2, cfg["peg"]["shaft_radius"])
         run["result"] = dict(center=center.tolist(), yaw_deg=float(angle),
@@ -89,7 +116,14 @@ def main():
         print(f"Estimated plate center ({center[0]:.4f}, {center[1]:.4f}) m, yaw {angle:.1f} deg (mod 180)",
               flush=True)
         run["hole"] = {}
-        belief = localize_hole(center, angle, args.table_z + cfg["box"]["size"][2], cfg, press, run["hole"])
+        def hole_update(belief, record):
+            if view is not None:
+                view.hole(record.get("presses", []), belief.particles, belief.weights,
+                          record.get("center"), record.get("std_m"), record.get("status"))
+
+        belief = localize_hole(center, angle, args.table_z + cfg["box"]["size"][2], cfg, press, run["hole"],
+                               on_update=hole_update)
+        hole_update(belief, run["hole"])
         samples.update(hole_particles=belief.particles, hole_weights=belief.weights)
         if run["hole"]["status"] == "found":
             x, y = run["hole"]["center"]
@@ -107,6 +141,10 @@ def main():
         (out / "result.json").write_text(json.dumps(run, indent=2) + "\n", encoding="utf-8")
         np.savez_compressed(out / "samples.npz", **samples)
         print(f"Localization measurements saved to {out}", flush=True)
+        if view is not None:
+            view.status("finished: " + (run.get("error") or "ok"))
+            view.close(keep_open=True)
+            print("Final live view saved to " + str(out / "final.png") + " (close the window to exit)", flush=True)
 
 
 if __name__ == "__main__":

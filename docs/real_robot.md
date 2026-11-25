@@ -1,5 +1,53 @@
 # Phase 1 on the real Franka: lab guide
 
+## Localization motion performance
+
+The planned backend now separates collision/IK sampling (`cartesian_step: 0.002`)
+from probe command spacing (`probe_step: 0.01`). Previously a sweep stopped and
+restarted a JointPositionSkill every ~2 mm, paying the acceleration ramp and
+controller termination buffer at each point. It now merges up to 10 mm of
+checked probe motion into each skill. Every merged edge is independently checked
+for shelf clearance, <=1 mm tip straightness error, and fixed tool orientation.
+The whole ray is still checked before dispatch. Force detection runs throughout
+the skill at the existing 20 ms polling interval and can stop before its endpoint.
+
+The configured search/travel speeds, joint velocity/acceleration caps, contact
+thresholds, gains and tracking tolerances are unchanged. This update retains
+segment execution; it does not switch back to the streaming mode that previously
+showed target freezes. Omit `probe_step` or set it to `0.002` to restore dense
+probe commands. The permitted range is from `cartesian_step` up to the smaller
+of `travel_step` and 20 mm.
+
+Matched offline results using the same virtual plant and nominal placement:
+
+| Sequence | Before | After | Joint commands before / after |
+| --- | --- | --- | --- |
+| Empty 245 mm sweep | 68.62 s | 30.16 s | 123 / 25 |
+| 65 mm face probe, stopped on contact | 12.26 s | 5.70 s | 22 / 5 |
+| 100 mm free-space travel | 6.38 s | 6.38 s | 3 / 3 |
+| Full nominal localization with verification | 446.28 s | 293.60 s | 597 / 167 |
+
+The full nominal run takes 34.2% less virtual time; both versions produced a
+verified pose. Peak contact residual increased from 7.99 to 10.20 N in that
+virtual run, below the existing 20 N safety limit. Fewer stops change the force
+transient, so physical contact behavior must be checked on the robot. Peak joint
+velocity and acceleration remain 0.15 rad/s and 0.3 rad/s². These are test-double
+results, not hardware timings or measured robot forces. Representative benchmarks
+explicitly enable path tracking checks; the existing hardware config's
+`path_checks` choice is unchanged.
+
+Validation: 54 tests passed across the executor, experiment harness, geometry and
+touch probing. New tests stop a merged command on contact before its first
+endpoint, enforce the polling/kinematic limits, and prevent dispatch after force
+faults or early termination. Raw evidence is under `runs/real/motion-speed/`:
+`before.json`, `after.json`, and `full-before/` / `full-after/` reports and audits.
+The code/config update is local only; no robot motion was issued for this change.
+
+```powershell
+.venv/Scripts/python.exe scripts/real/benchmark_localization_motion.py --probe-step .002 --out runs/real/motion-speed/before.json
+.venv/Scripts/python.exe scripts/real/benchmark_localization_motion.py --out runs/real/motion-speed/after.json
+```
+
 ## Checked joint executor candidate (latest)
 
 Hardware status (Nov 23): computer and arm are disconnected, confirmed by user.

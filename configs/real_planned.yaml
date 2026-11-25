@@ -100,7 +100,11 @@ joint_executor:
   yaw: 3.141592653589793
   joint3: 0.0
   cartesian_step: 0.002
-  # Travel-only command length (probes keep cartesian_step). Every merged edge is still
+  # Keep 2 mm IK/collision sampling, but avoid stopping the arm every 2 mm.
+  # Contact detection still runs throughout each skill at poll_seconds (50 Hz).
+  # Merged probe edges retain the same clearance, straightness and wrist checks.
+  probe_step: 0.01
+  # Travel-only command length. Every merged edge is still
   # checked for shelf clearance, <=1 mm tip deviation and wrist orientation.
   travel_step: 0.05
   # 2026-11-24: "stream" runs each travel/probe path as ONE frankapy dynamic joint-impedance

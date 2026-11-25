@@ -38,6 +38,9 @@ class JointPathExecutor:
         # start after 71 good transitions (run 20261124-132653-localize), so
         # travel uses as few skill transitions as the per-edge checks allow.
         self.travel_step = float(o.get("travel_step", self.step))
+        # Collision/IK sampling remains dense; command spacing is independent.
+        # Force feedback is polled throughout each command, not just at knots.
+        self.probe_step = float(o.get("probe_step", self.step))
         self.poll = float(o.get("poll_seconds", .02))
         self.min_seconds = float(o.get("min_segment_seconds", .5))
         self.max_velocity = float(o.get("max_joint_velocity", .15))
@@ -82,6 +85,7 @@ class JointPathExecutor:
                 or self.max_velocity > .25 or self.max_acceleration > .3
                 or self.probe_end_tolerance > self.joint_tolerance
                 or not self.step <= self.travel_step <= .10
+                or not self.step <= self.probe_step <= min(self.travel_step, .02)
                 or len(self.impedances) != 7 or min(self.impedances) <= 0):
             raise ValueError("invalid planned joint-executor limits")
         # Gains capped near frankapy's defaults; d7 stays <= 15 for 1 kHz stability.
@@ -365,7 +369,11 @@ class JointPathExecutor:
                         # so an earlier finish is a backstop/preemption, even if
                         # the tiny waypoint happens to lie within joint tolerance.
                         premature = done_at - t0 < duration - self.poll
-                        if (not premature and over == 0
+                        # A retreat can unload the force present during its
+                        # initial bias sample. The probe's 4 N contact debounce
+                        # must not veto an otherwise completed free-space move;
+                        # the force safety limit above still applies to both.
+                        if (not premature and (not detect_contact or over == 0)
                                 and np.max(np.abs(st.q - b)) <= endpoint_limit):
                             break
                         # Allow a stopped contact a brief debounce window, with

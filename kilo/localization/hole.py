@@ -5,12 +5,20 @@ import numpy as np
 from kilo.localization.archive.hole_filter import HoleSearchFilter
 
 
-def localize_hole(center, yaw_deg, nominal_top, cfg, press, run, *, rng=None):
+def localize_hole(center, yaw_deg, nominal_top, cfg, press, run, *, rng=None, on_update=None):
     """Update the run with the measured presses and return the final particle filter.
 
     The press callback returns the measured 3D tip position and whether contact
     stopped the descent. The run record is updated after each measurement.
+    ``on_update(belief, run)``, if given, is called after each measurement (live view).
     """
+
+    def notify(belief):
+        if on_update is not None:
+            try:
+                on_update(belief, run)
+            except Exception:
+                pass  # visualization must never affect the search
     settings = cfg["hole_search"]
     depth = settings["drop_depth"]
     # At full chamfer engagement, only the shaft-to-bore clearance permits a drop.
@@ -29,6 +37,7 @@ def localize_hole(center, yaw_deg, nominal_top, cfg, press, run, *, rng=None):
     tip, contact = press(ref_xy, nominal_top - depth - margin, "descent-reference")
     run.update(status="no_surface_reference", capture_radius_m=capture, drop_depth_m=depth,
                presses=[], reference={"tip": tip.tolist(), "contact": bool(contact)})
+    notify(belief)
     if not contact:
         return belief
     surface_z = tip[2]
@@ -63,6 +72,7 @@ def localize_hole(center, yaw_deg, nominal_top, cfg, press, run, *, rng=None):
         mean, covariance = belief.estimate()
         std = float(np.sqrt(np.linalg.eigvalsh(covariance)[-1]))
         run.update(center=mean.tolist(), covariance=covariance.tolist(), std_m=std)
+        notify(belief)
         print(f"Hole press {i + 1}: {'drop' if dropped else 'surface'}, {progressed * 1000:.1f} mm", flush=True)
         if confirmed and std <= settings["stop_std"]:
             run["status"] = "found"

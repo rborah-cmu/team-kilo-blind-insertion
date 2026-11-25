@@ -74,6 +74,54 @@ def test_early_backstop_does_not_resume_even_for_small_waypoints():
     assert len(t.commands) == 1 and t.stop_count == 1
 
 
+@pytest.mark.parametrize("fault", [None, "early", "force"])
+def test_retreat_force_release_does_not_override_endpoint_or_safety_checks(fault):
+    g, t, e, clock, s = setup()
+    path = e.plan(t.state().tip+[.003, 0, 0], np.pi)
+    state = t.state
+    def loaded_then_released():
+        st = state()
+        # Reproduce a bias sampled while the peg is loaded, followed by
+        # release during retreat: >contact threshold but <safety threshold.
+        if not t.commands:
+            st.force = st.force-np.array([12., 0, 0])
+        return st
+    t.state = loaded_then_released
+    if fault == "early":
+        t.early_done = True
+    elif fault == "force":
+        t.fault, t.fault_after = "force", .1
+    if fault:
+        with pytest.raises(SafetyStop, match="ended early or short|force safety"):
+            e.execute(path, .02, s)
+        assert len(t.commands) == 1 and t.stop_count == 1
+    else:
+        result = e.execute(path, .02, s)
+        assert not result.contact
+        assert s.force_threshold < result.peak_force < s.safety_force
+        assert np.max(np.abs(t.q-path.joints[-1])) < e.end_tolerance
+        assert t.stop_count == 0
+
+
+def test_contact_audit_keeps_force_and_pose_if_retreat_fails():
+    from scripts.real.test_joint_sequence import make_offline_backend
+    cfg = yaml.safe_load((REPO_ROOT / "configs/real_planned.yaml").read_text())
+    g, t, e, clock, s = setup(box=(.477, -.106, 0), xyz=(.36, -.075, .0322))
+    robot, t, clock = make_offline_backend(cfg, t.q, (.477, -.106, 0))
+    s.retreat = .003
+    def failed_retreat(*args):
+        raise SafetyStop("retreat failed")
+    robot.move = failed_retreat
+    with pytest.raises(SafetyStop, match="retreat failed"):
+        robot.probe(t.state().tip+[.065, 0, 0], np.pi, s)
+    audit = robot.path_audit[-1]
+    assert audit["completed"] and audit["contact"]
+    assert len(audit["stop_tip"]) == len(audit["force_n"]) == len(audit["bias_n"]) == 3
+    assert np.linalg.norm(audit["force_n"]) > s.force_threshold
+    assert robot.last_probe_samples
+    robot.close()
+
+
 def test_stalled_joint_skill_times_out_and_stops():
     g, t, e, clock, s = setup()
     path = e.plan(t.state().tip + [.006, 0, 0], np.pi)
@@ -336,6 +384,46 @@ def test_travel_step_merges_checked_samples_into_fewer_skills():
     assert not result.contact and np.linalg.norm(result.tip - target) < .002
     with pytest.raises(SafetyStop):
         e.plan(target, np.pi, max_step=e.travel_step * 3)
+
+
+def test_merged_probe_detects_contact_inside_first_long_segment():
+    from scripts.real.test_joint_sequence import make_offline_backend
+    cfg = yaml.safe_load((REPO_ROOT / "configs/real_planned.yaml").read_text())
+    g, t, e, clock, s = setup(box=(.477, -.106, 0), xyz=(.398, -.075, .0322))
+    robot, t, clock = make_offline_backend(cfg, t.q, (.477, -.106, 0))
+    robot.executor.path_checks = True
+    start = t.state().tip.copy()
+    result = robot.probe(start+[.065, 0, 0], np.pi, s)
+    assert result.contact and result.peak_force < s.safety_force
+    # Contact is ~3 mm ahead, well before the first 10 mm goal. The detector
+    # must stop the ongoing skill rather than waiting for a waypoint.
+    assert len(t.commands) == 1 and t.stop_count == 1
+    goal_tip = g.tip_pose(t.commands[0]["q"])[0]
+    assert goal_tip[0]-start[0] > .008
+    assert result.tip[0] < goal_tip[0]-.004
+    assert max(np.diff(np.asarray(result.samples)[:, 0])) <= e.poll+1e-9
+    for command in t.commands:
+        delta = np.max(np.abs(command["q"]-command["start_q"]))
+        assert 1.875*delta/command["duration"] <= e.max_velocity+1e-8
+        assert 5.774*delta/command["duration"]**2 <= e.max_acceleration+1e-8
+    robot.close()
+
+
+@pytest.mark.parametrize("early", [False, True])
+def test_merged_probe_stops_without_dispatching_next_segment_on_fault(early):
+    from scripts.real.test_joint_sequence import make_offline_backend
+    cfg = yaml.safe_load((REPO_ROOT / "configs/real_planned.yaml").read_text())
+    g, t, e, clock, s = setup()
+    robot, t, clock = make_offline_backend(cfg, t.q, None)
+    robot.executor.path_checks = True
+    if early:
+        t.early_done = True
+    else:
+        t.fault, t.fault_after = "force", .1
+    with pytest.raises(SafetyStop, match="ended early or short|force safety"):
+        robot.probe(t.state().tip+[.065, 0, 0], np.pi, s)
+    assert len(t.commands) == 1 and t.stop_count == 1
+    robot.close()
 
 
 def stream_setup(**kw):

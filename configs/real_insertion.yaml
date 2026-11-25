@@ -1,0 +1,35 @@
+# Real-robot scripted spiral insertion (adapted from main's insertion baseline:
+# kilo/insertion/reference.py, spiral.py, env.py and configs/default.yaml `insertion:`).
+# Simulation values are kept where they are geometry; force/preload values are raised
+# because the real wrench estimate is far noisier than MuJoCo's constraint forces.
+insertion_real:
+  policy_rate_hz: 50            # same as sim: target stream rate
+  # --- spiral (sim values) ---
+  spiral_pitch: 0.001           # m between turns (< diametral clearance + chamfer)
+  spiral_max_radius: 0.010      # sim 0.009; a little more for real hole-estimate error
+  search_speed: 0.010           # m/s along the spiral
+  tracking_tolerance: 0.002     # advance the spiral once the tip is this close
+  # --- depth logic (sim values) ---
+  capture_depth: 0.0003         # sinking this far below the surface starts CAPTURE
+  engagement_depth: 0.003       # past this, INSERT
+  capture_timeout: 1.0          # s in CAPTURE without engaging -> resume spiral
+  seat_depth: 0.020             # stop once the tip is this far below the surface (sim seats 37 mm)
+  # --- surface touch (real) ---
+  touch_force: 3.0              # N upward residual (sim 0.15 N from exact constraint forces)
+  touch_samples: 3              # consecutive samples
+  approach_height: 0.012        # start the impedance descent this far above the expected top
+  descent_rate: 0.006           # m/s target descent until touch (sim value)
+  # --- impedance (frankapy dynamic goto_pose: CartesianImpedanceFeedbackController) ---
+  search_xy_stiffness: 600.0    # N/m (sim)
+  insert_xy_stiffness: 150.0    # N/m (sim)
+  z_stiffness: 400.0            # N/m (sim)
+  rotation_stiffness: [30.0, 30.0, 50.0]  # N m/rad; sim used [2, 2, 10] (too soft to trust on hardware)
+  # Downward preload = z_stiffness * lead. Sim used 1 mm (0.4 N); real friction and
+  # wrench noise need more to feel the chamfer: 10 mm -> ~4 N while searching.
+  search_z_lead: 0.010
+  insert_z_lead: 0.015          # ~6 N pushing in once engaged
+  # --- safety ---
+  force_limit: 20.0             # N, any axis of the residual -> stop
+  max_xy_excursion: 0.015       # m from the start estimate -> stop
+  timeout: 120.0                # s for the whole search + insert
+  max_tracking_error: 0.020     # m tip vs target (beyond the commanded lead) -> stop
