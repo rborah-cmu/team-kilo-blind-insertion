@@ -8,19 +8,35 @@ insertion_real:
   spiral_pitch: 0.001           # m between turns (< diametral clearance + chamfer)
   spiral_max_radius: 0.010      # sim 0.009; a little more for real hole-estimate error
   search_speed: 0.010           # m/s along the spiral
-  tracking_tolerance: 0.002     # advance the spiral once the tip is this close
+  tracking_tolerance: 0.0025    # advance the spiral once the tip is this close (sim 2 mm;
+                                # 2026-11-25 the tip sat 2.0-2.1 mm off and never advanced)
+  stuck_seconds: 1.0            # no waypoint progress this long -> skip ahead on the spiral
   # --- depth logic (sim values) ---
   capture_depth: 0.0003         # sinking this far below the surface starts CAPTURE
   engagement_depth: 0.003       # past this, INSERT
   capture_timeout: 1.0          # s in CAPTURE without engaging -> resume spiral
-  seat_depth: 0.020             # stop once the tip is this far below the surface (sim seats 37 mm)
+  seat_depth: 0.030             # seated at this depth below the surface (sim seats 37 mm), or:
+  min_seat_depth: 0.010         # past this depth in INSERT, stopping to go deeper = seated
+  seat_stall_seconds: 1.5       # (2026-11-25: the peg bottomed out at 18.4 mm and pushed for 95 s)
+  seat_stall_motion: 0.0003     # m of depth progress over that window
   # --- surface touch (real) ---
-  touch_force: 3.0              # N upward residual (sim 0.15 N from exact constraint forces)
+  touch_force: 1.5              # N upward residual (sim 0.15 N). 2026-11-25: the real estimate
+                                # read only +1.2..2.4 N with ~4 N of spring preload on the plate
   touch_samples: 3              # consecutive samples
+  # Kinematic touch (does not depend on the wrench estimate): the tip has stopped descending
+  # while at least stall_lag behind its target, i.e. the z spring is compressed on something.
+  stall_lag: 0.006              # m (of the 10 mm search lead)
+  stall_seconds: 0.3            # s with < stall_motion of descent
+  stall_motion: 0.0003          # m
   approach_height: 0.012        # start the impedance descent this far above the expected top
   descent_rate: 0.006           # m/s target descent until touch (sim value)
   # --- impedance (frankapy dynamic goto_pose: CartesianImpedanceFeedbackController) ---
   search_xy_stiffness: 600.0    # N/m (sim)
+  # Integral xy correction while searching: friction + impedance offset held the tip 3.8 mm
+  # from its xy target on 2026-11-25 (spiral pitch is 1 mm). The streamed target leans past
+  # the waypoint by gain * integral(error), capped; reset when capture starts.
+  xy_integral_gain: 2.0         # 1/s
+  xy_integral_max: 0.010        # m
   insert_xy_stiffness: 150.0    # N/m (sim)
   z_stiffness: 400.0            # N/m (sim)
   rotation_stiffness: [30.0, 30.0, 50.0]  # N m/rad; sim used [2, 2, 10] (too soft to trust on hardware)
@@ -31,5 +47,7 @@ insertion_real:
   # --- safety ---
   force_limit: 20.0             # N, any axis of the residual -> stop
   max_xy_excursion: 0.015       # m from the start estimate -> stop
-  timeout: 120.0                # s for the whole search + insert
+  timeout: 90.0                 # s per attempt. Long search, but never parked: the spiral skips
+                                # ahead after stuck_seconds, capture gives up after capture_timeout,
+                                # and a shallow stalled insert resumes the spiral (user, 2026-11-25)
   max_tracking_error: 0.020     # m tip vs target (beyond the commanded lead) -> stop

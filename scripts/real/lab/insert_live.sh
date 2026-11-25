@@ -6,7 +6,8 @@
 #   ./insert_live.sh --from-run <run dir>    a specific localize run (deploy/main2Live/runs/real/...)
 #   ./insert_live.sh --hole 0.5119 -0.0685   explicit hole estimate (m, robot base)
 #   ./insert_live.sh --localize              run the plate localization first
-#   add --retract to lift straight up afterwards, --no-window over SSH
+#   once seated it releases the peg, lifts clear and goes home (default);
+#   --keep-grip keeps holding the peg, --no-home stays after lifting, --no-window over SSH
 #
 # Before: peg grasped, someone at the e-stop. Keep the arm still for the first 5 s.
 set -u

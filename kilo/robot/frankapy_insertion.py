@@ -77,6 +77,7 @@ class FrankaSpiralInserter:
         self._start_skill(ee, c["search_xy_stiffness"], c["timeout"] + 5.)
         t0 = self.clock.monotonic()
         msg_id, last_phase = 0, None
+        xy_bias = np.zeros(2)  # integral xy correction (approach/search only)
         try:
             while True:
                 now = self.clock.monotonic()
@@ -88,7 +89,11 @@ class FrankaSpiralInserter:
                     result["phases"].append(dict(t=round(t, 3), phase=ref.phase, tip=tip.tolist()))
                     last_phase = ref.phase
                     print(f"  [{t:6.2f} s] phase {ref.phase}"
-                          + (f", surface z {ref.surface_z:.4f} m" if ref.surface_z is not None else ""), flush=True)
+                          + (f", surface z {ref.surface_z:.4f} m" if ref.surface_z is not None else "")
+                          + (f" (touch by {ref.touch_reason})" if ref.phase == ref.SEARCH and ref.touch_reason else ""),
+                          flush=True)
+                    if ref.phase not in (ref.APPROACH, ref.SEARCH):
+                        xy_bias[:] = 0.  # capture/insert: soft xy at the locked point, no lean
                     if self.view is not None:
                         self.view.status(f"insertion: {ref.phase}")
                 depth = ref.depth_reference - tip[2]
@@ -97,8 +102,10 @@ class FrankaSpiralInserter:
                 if self.view is not None:
                     self.view.sample(t, tip, force)
                 if ref.done:
-                    result.update(status="seated", depth_m=float(depth), seconds=t, final_tip=tip.tolist())
-                    print(f"Seated: {depth * 1000:.1f} mm below the surface after {t:.1f} s", flush=True)
+                    result.update(status="seated", depth_m=float(depth), seconds=t, final_tip=tip.tolist(),
+                                  seat_reason=ref.seat_reason)
+                    print(f"Seated ({ref.seat_reason}): {depth * 1000:.1f} mm below the surface after {t:.1f} s",
+                          flush=True)
                     break
                 # ---- safety
                 if np.any(np.abs(force) > c["force_limit"]):
@@ -106,7 +113,7 @@ class FrankaSpiralInserter:
                 if np.linalg.norm(tip[:2] - np.asarray(estimate_xy)) > c["max_xy_excursion"]:
                     raise InsertionStop("peg left the search region around the hole estimate")
                 lead = c["insert_z_lead"] if ref.phase in (ref.INSERT,) else c["search_z_lead"]
-                xy_err = float(np.linalg.norm(target[:2] - tip[:2]))
+                xy_err = float(np.linalg.norm(target[:2] - tip[:2]))  # vs the reference, not the lean
                 if xy_err > c["max_tracking_error"] or tip[2] - target[2] > lead + c["max_tracking_error"]:
                     raise InsertionStop(f"tip not following the target (xy {xy_err * 1000:.1f} mm)")
                 if t > c["timeout"]:
@@ -114,8 +121,13 @@ class FrankaSpiralInserter:
                                         f"(phase {ref.phase}, {ref.spiral_laps} spiral laps)")
                 if msg_id > 5 and self.arm.is_skill_done(ignore_errors=False):
                     raise InsertionStop("the impedance skill ended early (virtual wall, joint limit or contact backstop)")
+                command = target.copy()
+                if ref.phase in (ref.APPROACH, ref.SEARCH) and c.get("xy_integral_gain", 0) > 0:
+                    xy_bias = np.clip(xy_bias + c["xy_integral_gain"] * (target[:2] - tip[:2]) * dt,
+                                      -c["xy_integral_max"], c["xy_integral_max"])
+                    command[:2] += xy_bias
                 msg_id += 1
-                self._send(msg_id, t, target - offset, quaternion, kxy)
+                self._send(msg_id, t, command - offset, quaternion, kxy)
                 spent = self.clock.monotonic() - now
                 self.clock.sleep(max(0., dt - spent))
         except BaseException as exc:
@@ -134,7 +146,7 @@ class FrankaSpiralInserter:
                 self.arm.stop_skill()
             except Exception as stop_error:
                 print(f"stop_skill failed: {stop_error}; use the e-stop if the arm moves", flush=True)
-            result.update(surface_z=ref.surface_z, spiral_laps=ref.spiral_laps,
+            result.update(surface_z=ref.surface_z, spiral_laps=ref.spiral_laps, spiral_skips=ref.skips,
                           path=ref.path[::5].tolist())
             self.last_result = result
         return result

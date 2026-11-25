@@ -9,6 +9,8 @@ Hole estimate, in order of preference:
 Then: approach above the estimate with joint moves, and run ONE frankapy Cartesian-impedance
 skill that spirals under a light downward preload, captures the hole, and pushes the peg in
 (see kilo/insertion/real_spiral.py). A live window shows the spiral, tip path and forces.
+Once seated (default): open the gripper, lift straight up clear of the peg, go home.
+Use --keep-grip to keep holding it, --no-home to stay after lifting.
 
     python3 scripts/insert_live.py --from-run runs/real/<stamp>-localize --table-z 0.0072
     python3 scripts/insert_live.py --from-run runs/real/<stamp>-localize --table-z 0.0072 --execute
@@ -39,6 +41,25 @@ def cad_candidates(center, yaw_deg, cfg):
     return [np.asarray(center) + off, np.asarray(center) - off]
 
 
+def inserted_locations(runs_root, near, radius=0.015):
+    """Tips where earlier insertion attempts went into the hole (reached INSERT/SEATED),
+    newest first, within ``radius`` of ``near`` (i.e. the same box placement)."""
+    found = []
+    for run in sorted(Path(runs_root).glob("*-insert"), reverse=True):
+        try:
+            data = json.loads((run / "result.json").read_text())
+        except Exception:
+            continue
+        for att in data.get("attempts") or []:
+            for ph in att.get("phases") or []:
+                if ph.get("phase") in ("insert", "seated") and ph.get("tip"):
+                    xy = np.asarray(ph["tip"][:2], float)
+                    if np.linalg.norm(xy - np.asarray(near)) <= radius:
+                        found.append((run.name, xy))
+                    break
+    return found
+
+
 def estimate_from_run(run_dir, cfg, table_z):
     data = json.loads((Path(run_dir) / "result.json").read_text())
     res = data.get("result") or {}
@@ -60,6 +81,22 @@ def estimate_from_run(run_dir, cfg, table_z):
                 top_z=float(top), candidates=candidates, notes=notes)
 
 
+def home_arm(arm, view=None, joint_speed=0.4):
+    """Joint move to frankapy home from a high pose; duration scales with the largest joint change."""
+    try:
+        from frankapy import FrankaConstants as FC
+        home = np.asarray(FC.HOME_JOINTS, float)
+    except ImportError:  # same values as frankapy's HOME_JOINTS
+        home = np.array([0., -np.pi / 4, 0., -3 * np.pi / 4, 0., np.pi / 2, np.pi / 4])
+    delta = float(np.max(np.abs(home - np.asarray(arm.get_joints(), float))))
+    duration = max(6.0, 1.875 * delta / joint_speed)
+    if view:
+        view.status("going home")
+    print(f"Going home ({np.degrees(delta):.0f} deg largest joint change, {duration:.1f} s)", flush=True)
+    arm.goto_joints(home.tolist(), duration=duration, ignore_errors=False, ignore_virtual_walls=False,
+                    skill_desc="Kilo home after insertion")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--robot-num", type=int, default=1)
@@ -70,7 +107,13 @@ def main():
     src.add_argument("--localize", action="store_true")
     ap.add_argument("--top-z", type=float, default=None, help="plate top height (default: measured or table+box)")
     ap.add_argument("--config", type=Path, default=ROOT / "configs" / "real_insertion.yaml")
-    ap.add_argument("--retract", action="store_true", help="lift straight up after seating or stopping")
+    ap.add_argument("--retract", action="store_true",
+                    help="(default after seating) kept for compatibility; a failed run always lifts clear")
+    ap.add_argument("--keep-grip", action="store_true",
+                    help="after seating, keep holding the peg (no release, no lift, no home)")
+    ap.add_argument("--no-home", action="store_true", help="after release and lift, stay instead of homing")
+    ap.add_argument("--no-memory", action="store_true",
+                    help="do not try where an earlier insertion attempt went into the hole first")
     ap.add_argument("--no-live", action="store_true")
     ap.add_argument("--no-window", action="store_true")
     ap.add_argument("--execute", action="store_true", help="move the arm")
@@ -87,6 +130,12 @@ def main():
         plan.update(estimate_from_run(args.from_run, cfg, args.table_z))
         if args.top_z:
             plan["top_z"] = args.top_z
+    if not args.no_memory and plan["candidates"]:
+        hits = inserted_locations(ROOT / "runs" / "real", plan["candidates"][0])
+        if hits:
+            name, xy = hits[0]
+            plan["candidates"] = [xy] + [c for c in plan["candidates"] if np.linalg.norm(c - xy) > 0.003]
+            plan["notes"] = [f"where the peg went in on {name}: {np.round(xy, 4).tolist()}"] + plan["notes"]
     print("Insertion plan:", flush=True)
     for n in plan["notes"] or ["plate localization first, then the CAD hole offset"]:
         print("  candidate:", n, flush=True)
@@ -156,7 +205,8 @@ def main():
             print(f"Plate ({center[0]:.4f}, {center[1]:.4f}) m, yaw {yaw:.1f} deg", flush=True)
 
         result = None
-        for i, xy in enumerate(plan["candidates"][:2]):
+        n_attempts = min(3, len(plan["candidates"]))
+        for i, xy in enumerate(plan["candidates"][:n_attempts]):
             print(f"\nAttempt {i + 1}: hole estimate {np.round(xy, 4).tolist()}", flush=True)
             if view:
                 view.status(f"approach attempt {i + 1}")
@@ -185,7 +235,7 @@ def main():
             except InsertionStop as stop:
                 run["attempts"].append(getattr(inserter, "last_result", dict(status="stopped", reason=str(stop))))
                 print(f"Attempt {i + 1} stopped: {stop}", flush=True)
-                retryable = "no insertion within" in str(stop) and i + 1 < min(2, len(plan["candidates"]))
+                retryable = "no insertion within" in str(stop) and i + 1 < n_attempts
                 move_keep_wrist(robot, robot.travel_z, vertical=True)
                 if not retryable:
                     raise
@@ -194,7 +244,20 @@ def main():
             print(f"\nINSERTED: {result['depth_m'] * 1000:.1f} mm deep, {result['seconds']:.1f} s", flush=True)
             if view:
                 view.status(f"INSERTED {result['depth_m'] * 1000:.1f} mm deep")
-        if args.retract:
+        if result and result["status"] == "seated" and not args.keep_grip:
+            # Default ending (user, 2026-11-25): let go of the peg, lift clear, go home.
+            if view:
+                view.status("releasing the peg")
+            print("Releasing the peg", flush=True)
+            arm.open_gripper()
+            time.sleep(1.0)
+            run["released"] = True
+            move_keep_wrist(robot, robot.travel_z, vertical=True)
+            print("Lifted clear of the peg", flush=True)
+            if not args.no_home:
+                home_arm(arm, view)
+                run["homed"] = True
+        elif not (result and result["status"] == "seated"):
             move_keep_wrist(robot, robot.travel_z, vertical=True)
     except BaseException as failure:
         run["error"] = str(failure) or type(failure).__name__

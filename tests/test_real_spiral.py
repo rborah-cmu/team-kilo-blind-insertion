@@ -83,9 +83,15 @@ class _FakeArm:
         self.stopped = True
 
     def advance(self, dt):
+        inside = self.tip[2] < TOP - 1e-6  # shaft already in the bore
         self.tip[:2] += min(1., dt / 0.05) * (self.target[:2] - self.tip[:2])
+        if inside:  # the bore holds the shaft laterally (0.2 mm radial clearance)
+            off = self.tip[:2] - self.hole
+            n = np.linalg.norm(off)
+            if n > 0.0002:
+                self.tip[:2] = self.hole + off / n * 0.0002
         self.tip[2] += min(1., dt / 0.05) * (self.target[2] - self.tip[2])
-        over = np.linalg.norm(self.tip[:2] - self.hole) <= CAPTURE and not self.block
+        over = (np.linalg.norm(self.tip[:2] - self.hole) <= CAPTURE or inside) and not self.block
         if not over and self.tip[2] < TOP:
             self.force = np.array([0., 0., CFG["z_stiffness"] * (TOP - self.target[2])])
             self.tip[2] = TOP
@@ -174,3 +180,116 @@ def test_approach_keeps_the_wrist_yaw():
     for R in r.rotations:  # same yaw for every waypoint, including the sideways move
         assert np.arctan2(R[1, 0], R[0, 0]) == pytest.approx(yaw0, abs=1e-9)
         assert R[2, 2] == pytest.approx(1.0)  # probe_rotation convention
+
+
+def test_seats_despite_under_read_force_and_xy_friction_offset():
+    """2026-11-25 hardware: Fz read +1.2..2.4 N with ~4 N preload, tip held 3.8 mm off in xy."""
+    hole = np.array([0.51, -0.07])
+    est = hole + [0.003, 0.002]
+    arm = _FakeArm(hole, np.r_[est, TOP + CFG["approach_height"]])
+    offset = np.array([0.0038, 0.0])
+    advance = arm.advance
+
+    def advance_with_friction(dt):
+        aim = arm.target.copy()
+        arm.target[:2] = aim[:2] - offset  # where the friction-limited impedance actually settles
+        advance(dt)
+        arm.target = aim
+    arm.advance = advance_with_friction
+    ins = _inserter(arm)
+    ins.force_fn = lambda: 0.4 * arm.force  # under-reading wrench estimate
+    res = ins.run(est, TOP)
+    assert res["status"] == "seated", res
+    assert any(p["phase"] == "search" for p in res["phases"])
+
+
+def test_without_stall_detection_the_under_read_touch_is_missed():
+    hole = np.array([0.51, -0.07])
+    est = hole + [0.006, 0.]
+    arm = _FakeArm(hole, np.r_[est, TOP + CFG["approach_height"]], block_everywhere=True)
+    from kilo.robot.frankapy_insertion import InsertionStop
+    ins = _inserter(arm, dict(CFG, stall_lag=1.0, timeout=15.))  # stall detection disabled
+    ins.force_fn = lambda: 0.3 * arm.force
+    with pytest.raises(InsertionStop, match="phase approach"):
+        ins.run(est, TOP)
+
+
+def test_bottoming_out_in_the_hole_counts_as_seated():
+    """2026-11-25: the peg stopped at 18.4 mm and pushed for 95 s waiting for 20 mm."""
+    hole = np.array([0.51, -0.07])
+    arm = _FakeArm(hole, np.r_[hole + [0.002, 0.], TOP + CFG["approach_height"]])
+    advance = arm.advance
+
+    def advance_with_floor(dt):
+        advance(dt)
+        arm.tip[2] = max(arm.tip[2], TOP - 0.0184)  # shoulder / fingers reach the plate
+    arm.advance = advance_with_floor
+    res = _inserter(arm).run(hole + [0.002, 0.], TOP)
+    assert res["status"] == "seated" and res["seat_reason"] == "bottomed out"
+    assert res["depth_m"] == pytest.approx(0.0184, abs=0.0005)
+
+
+def test_search_skips_ahead_when_caught_on_an_edge():
+    """2026-11-25: tip stuck 2.0-2.1 mm from its first waypoint for 117 s."""
+    hole = np.array([0.51, -0.07])
+    est = hole + [0.0027, -0.001]
+    tip = np.r_[est, TOP]
+    ref = RealSpiralReference(CFG, est, TOP, tip)
+    for _ in range(CFG["touch_samples"]):
+        ref.step(tip, 5.)
+    assert ref.phase == "search"
+    stuck_tip = tip + [0.003, 0., 0.]  # held 3 mm from every waypoint, never moving
+    start_index = ref.index
+    for _ in range(int(2.5 / ref.dt)):
+        ref.step(stuck_tip, 2.)
+    assert ref.skips >= 2 and ref.index > start_index
+
+
+def test_insert_memory_prefers_where_the_peg_went_in(tmp_path):
+    import json
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import insert_live
+    run = tmp_path / "20261125-155355-1-insert"
+    run.mkdir()
+    (run / "result.json").write_text(json.dumps(dict(attempts=[
+        dict(phases=[dict(phase="approach", tip=[.5069, -.0744, .07]), dict(phase="insert", tip=[.5088, -.0683, .06])])])))
+    far = tmp_path / "20261125-100000-1-insert"
+    far.mkdir()
+    (far / "result.json").write_text(json.dumps(dict(attempts=[dict(phases=[dict(phase="insert", tip=[.40, .10, .06])])])))
+    hits = insert_live.inserted_locations(tmp_path, np.array([.5119, -.0685]))
+    assert len(hits) == 1 and np.allclose(hits[0][1], [.5088, -.0683])
+
+
+def test_shallow_stall_in_insert_resumes_the_spiral():
+    """Never park: a peg jammed a few mm in (not seated) goes back to searching, further along."""
+    hole = np.array([0.51, -0.07])
+    tip = np.r_[hole, TOP]
+    ref = RealSpiralReference(CFG, hole, TOP, tip)
+    for _ in range(CFG["touch_samples"]):
+        ref.step(tip, 5.)
+    jammed = np.r_[hole, TOP - 0.004]  # 4 mm in, then stuck
+    phases = []
+    for _ in range(int(4.0 / ref.dt)):
+        ref.step(jammed, 2.)
+        phases.append(ref.phase)
+    assert "insert" in phases and ref.phase in ("search", "capture", "insert")
+    assert ref.skips >= 1 and ref.index > 0 and not ref.done
+
+
+def test_home_after_insertion_scales_duration_and_keeps_walls_on():
+    import sys
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import insert_live
+
+    class Arm:
+        def get_joints(self):
+            return np.array([-0.04, 0.17, -0.08, -2.36, 0.02, 2.53, -1.55])
+
+        def goto_joints(self, joints, **kw):
+            self.joints, self.kw = joints, kw
+    arm = Arm()
+    insert_live.home_arm(arm)
+    assert np.allclose(arm.joints, [0, -np.pi / 4, 0, -3 * np.pi / 4, 0, np.pi / 2, np.pi / 4])
+    assert arm.kw["ignore_virtual_walls"] is False and arm.kw["ignore_errors"] is False
+    assert arm.kw["duration"] >= 1.875 * 2.335 / 0.4 - 1e-6  # 2.335 rad wrist change -> ~11 s
