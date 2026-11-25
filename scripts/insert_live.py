@@ -98,7 +98,7 @@ def main():
         return
 
     from frankapy import FrankaArm
-    from kilo.robot.frankapy_insertion import FrankaSpiralInserter, InsertionStop
+    from kilo.robot.frankapy_insertion import FrankaSpiralInserter, InsertionStop, move_keep_wrist
     from kilo.robot.frankapy_localization import CONTACT_THRESHOLD, FORCE_LIMIT, FrankaLocalizer
 
     started = datetime.now()
@@ -162,9 +162,11 @@ def main():
                 view.status(f"approach attempt {i + 1}")
                 view.path(spiral_waypoints(xy, icfg["spiral_pitch"], icfg["spiral_max_radius"], 0.0005),
                           zoom=0.03)
-            robot._move(robot.travel_z, vertical=True)
-            robot._move(np.r_[xy, robot.travel_z], position_eps=1e-6)
-            robot._move(plan["top_z"] + icfg["approach_height"], vertical=True)
+            # Fixed-wrist moves: the localizer's _move turns the tool to the move direction,
+            # which ran joint 7 past its limit on this approach.
+            move_keep_wrist(robot, robot.travel_z, vertical=True)
+            move_keep_wrist(robot, np.r_[xy, robot.travel_z])
+            move_keep_wrist(robot, plan["top_z"] + icfg["approach_height"], vertical=True)
             # Zero the residual at the hover point, peg in free air.
             readings = []
             for _ in range(25):
@@ -184,7 +186,7 @@ def main():
                 run["attempts"].append(getattr(inserter, "last_result", dict(status="stopped", reason=str(stop))))
                 print(f"Attempt {i + 1} stopped: {stop}", flush=True)
                 retryable = "no insertion within" in str(stop) and i + 1 < min(2, len(plan["candidates"]))
-                robot._move(robot.travel_z, vertical=True)
+                move_keep_wrist(robot, robot.travel_z, vertical=True)
                 if not retryable:
                     raise
         run["result"] = result
@@ -193,7 +195,7 @@ def main():
             if view:
                 view.status(f"INSERTED {result['depth_m'] * 1000:.1f} mm deep")
         if args.retract:
-            robot._move(robot.travel_z, vertical=True)
+            move_keep_wrist(robot, robot.travel_z, vertical=True)
     except BaseException as failure:
         run["error"] = str(failure) or type(failure).__name__
         if view:

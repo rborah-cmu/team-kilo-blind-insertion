@@ -35,11 +35,13 @@ case "$joined" in
         ;;
 esac
 
-PYDEPS="${KILO_PYDEPS:-/tmp/kilo-localize-pydeps-20261124}"
-if ! kcheck "PYTHONPATH=$PYDEPS python3 -c 'import mujoco'" >/dev/null 2>&1; then
-    red "mujoco is not importable in the container (expected under $PYDEPS)."
+if ! PYDEPS=$(kilo_pydeps); then
+    red "mujoco is not importable in the container (not in the image, nor in deploy/pydeps)."
+    red "Reinstall inside the container:  pip3 install --target $KILO_DOCKER_DIR/deploy/pydeps mujoco==3.2.3"
+    red "then delete deploy/pydeps/numpy* so the image's numpy 1.23.5 stays in use."
     exit 1
 fi
+[ -n "$PYDEPS" ] && green "mujoco from $PYDEPS" || green "mujoco from the docker image"
 
 # A wrist at its limit makes the first joint move unreachable: home first in that case.
 q=$(kcheck "$ROS_SETUP; timeout 8 rostopic echo -n1 /robot_state_publisher_node_1/robot_state 2>/dev/null" | grep -m1 '^q: ' | tr -d 'q:[] ')
@@ -58,16 +60,20 @@ case "$joined" in
     *" --no-window "*) ;;
     *)
         if [ "$KILO_IN_CONTAINER" != 1 ]; then
-            { if [ -n "${SUDO_USER:-}" ]; then sudo -u "$SUDO_USER" DISPLAY="${DISPLAY:-:1}" xhost +local:root;
-              else DISPLAY="${DISPLAY:-:1}" xhost +local:root; fi; } >/dev/null 2>&1 \
-              || { red "No desktop display access; using --no-window (live.png only)."; args+=(--no-window); }
+            if xhost_as_user +SI:localuser:root >/dev/null 2>&1; then
+                trap 'xhost_as_user -SI:localuser:root >/dev/null 2>&1' EXIT
+            else
+                red "No desktop display access; using --no-window (live.png only)."; args+=(--no-window)
+            fi
         fi
         ;;
 esac
 
 console="/tmp/kilo_insert_live_$(date +%Y%m%d-%H%M%S).log"
 bold "Someone at the e-stop, table area clear. Ctrl-C stops the script (the e-stop stops the arm)."
-kdocker "cd $LIVE_DIR && export PYTHONPATH=$PYDEPS:\$PYTHONPATH && python3 -u scripts/insert_live.py --execute ${args[*]}" 2>&1 | tee "$console"
+# Shell-escape every argument before it goes into the container's bash -c.
+qargs=$(printf '%q ' "${args[@]}")
+kdocker "cd $(printf %q "$LIVE_DIR") && export PYTHONPATH=$(printf %q "$PYDEPS"):\$PYTHONPATH && python3 -u scripts/insert_live.py --execute $qargs" 2>&1 | tee "$console"
 status=${PIPESTATUS[0]}
 
 run=$(ls -1d "$KILO_HOST_DIR/$LIVE_DIR"/runs/real/*-insert 2>/dev/null | sort | tail -1)

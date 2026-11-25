@@ -31,10 +31,10 @@ if printf '%s\n' "${args[@]}" | grep -q -- '--no-window'; then
     :
 elif [ "$KILO_IN_CONTAINER" = 1 ]; then
     # Inside the container DISPLAY is already :1; the window works if the desktop allowed it
-    # (xhost +local:root on the lab PC). Otherwise the view falls back to live.png.
+    # (xhost +SI:localuser:root on the lab PC). Otherwise the view falls back to live.png.
     green "Live window: trying display ${DISPLAY:-:1} (falls back to live.png if not allowed)."
-elif { if [ -n "${SUDO_USER:-}" ]; then sudo -u "$SUDO_USER" DISPLAY="${DISPLAY:-:1}" xhost +local:root;
-         else DISPLAY="${DISPLAY:-:1}" xhost +local:root; fi; } >/dev/null 2>&1; then
+elif xhost_as_user +SI:localuser:root >/dev/null 2>&1; then
+    trap 'xhost_as_user -SI:localuser:root >/dev/null 2>&1' EXIT
     green "Live window: on the lab PC desktop (display ${DISPLAY:-:1})."
 else
     red "No access to the lab PC desktop display; continuing with --no-window (live.png only)."
@@ -44,12 +44,13 @@ fi
 # mujoco (used by the joint IK) is only installed in this extra folder inside the container,
 # the same one the teammate's localizeDeploy runs use. It lives in the container's /tmp,
 # so it disappears if the container is recreated.
-PYDEPS="${KILO_PYDEPS:-/tmp/kilo-localize-pydeps-20261124}"
-if ! kcheck "PYTHONPATH=$PYDEPS python3 -c 'import mujoco'" >/dev/null 2>&1; then
-    red "mujoco is not importable in the container (expected under $PYDEPS)."
-    red "Reinstall it there (pip install --target $PYDEPS mujoco) or set KILO_PYDEPS to where it is."
+if ! PYDEPS=$(kilo_pydeps); then
+    red "mujoco is not importable in the container (not in the image, nor in deploy/pydeps)."
+    red "Reinstall inside the container:  pip3 install --target $KILO_DOCKER_DIR/deploy/pydeps mujoco==3.2.3"
+    red "then delete deploy/pydeps/numpy* so the image's numpy 1.23.5 stays in use."
     exit 1
 fi
+[ -n "$PYDEPS" ] && green "mujoco from $PYDEPS" || green "mujoco from the docker image"
 
 # The IK starts from the current joints, so a wrist near its limit makes the first move
 # unreachable (2026-11-24: joint 7 at -2.84 rad -> "Joints not reachable!"). Start from home.
@@ -71,7 +72,9 @@ fi
 
 console="/tmp/kilo_localize_live_$(date +%Y%m%d-%H%M%S).log"
 bold "Someone at the e-stop, table area clear. Ctrl-C stops the script (the e-stop stops the arm)."
-kdocker "cd $LIVE_DIR && export PYTHONPATH=$PYDEPS:\$PYTHONPATH && python3 -u scripts/localize_live.py --execute ${args[*]}" 2>&1 | tee "$console"
+# Shell-escape every argument before it goes into the container's bash -c.
+qargs=$(printf '%q ' "${args[@]}")
+kdocker "cd $(printf %q "$LIVE_DIR") && export PYTHONPATH=$(printf %q "$PYDEPS"):\$PYTHONPATH && python3 -u scripts/localize_live.py --execute $qargs" 2>&1 | tee "$console"
 status=${PIPESTATUS[0]}
 
 run=$(ls -1d "$KILO_HOST_DIR/$LIVE_DIR"/runs/real/*-localize 2>/dev/null | sort | tail -1)

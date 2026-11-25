@@ -140,3 +140,37 @@ def test_robot_loop_times_out_when_no_hole():
     with pytest.raises(InsertionStop, match="no insertion within"):
         _inserter(arm, dict(CFG, timeout=20.)).run(hole, TOP)
     assert arm.stopped
+
+
+def test_approach_keeps_the_wrist_yaw():
+    """move_keep_wrist sends every waypoint with the starting yaw, tool pointing down."""
+    from scipy.spatial.transform import Rotation
+    from kilo.robot.frankapy_insertion import move_keep_wrist
+
+    yaw0 = np.radians(125.8)
+    R0 = Rotation.from_euler("z", yaw0).as_matrix() @ np.diag([1., -1., -1.])  # tool down
+
+    class Robot:
+        force_zero = np.zeros(3)
+
+        def __init__(self):
+            self.tip, self.rotations = np.array([0.5067, -0.0613, 0.1068]), []
+
+        def _read_joints(self):
+            return np.zeros(7)
+
+        def _pose(self, joints):
+            return self.tip.copy(), R0
+
+        def _move_to_waypoint(self, waypoint, rotation, joints, thresholds, **kw):
+            self.rotations.append(rotation)
+            self.tip = np.asarray(waypoint, float)
+            return joints, None
+
+    r = Robot()
+    move_keep_wrist(r, 0.20, vertical=True)
+    move_keep_wrist(r, np.array([0.5119, -0.0685, 0.20]))  # sideways move
+    assert len(r.rotations) >= 2 and np.allclose(r.tip, [0.5119, -0.0685, 0.20])
+    for R in r.rotations:  # same yaw for every waypoint, including the sideways move
+        assert np.arctan2(R[1, 0], R[0, 0]) == pytest.approx(yaw0, abs=1e-9)
+        assert R[2, 2] == pytest.approx(1.0)  # probe_rotation convention

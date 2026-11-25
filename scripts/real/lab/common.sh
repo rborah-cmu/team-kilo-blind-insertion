@@ -65,3 +65,26 @@ require_no_other_client() {
 latest_run() {  # latest_run <command>  -> host path of newest runs/real/*-<command>
     ls -1d "$KILO_HOST_DIR"/runs/real/*-"$1" 2>/dev/null | sort | tail -1
 }
+
+# Run xhost as the desktop user (also under sudo). Used to grant the container's root user,
+# and only that user, access to the lab PC display: xhost_as_user +SI:localuser:root
+xhost_as_user() {
+    if [ -n "${SUDO_USER:-}" ]; then sudo -u "$SUDO_USER" DISPLAY="${DISPLAY:-:1}" xhost "$@"
+    else DISPLAY="${DISPLAY:-:1}" xhost "$@"; fi
+}
+
+# mujoco (the joint IK) must be importable in the container. Order: the image itself
+# (frankapy_docker:kilo has it), then the persistent folder in the mounted project
+# (deploy/pydeps, survives container restarts), then KILO_PYDEPS if set.
+# Prints the PYTHONPATH prefix to use (may be empty); returns 1 if mujoco is missing.
+kilo_pydeps() {
+    local d
+    for d in "${KILO_PYDEPS:-}" "" "$KILO_DOCKER_DIR/deploy/pydeps"; do
+        if [ -z "$d" ] && [ -n "${KILO_PYDEPS:-}" ]; then continue; fi
+        if kcheck "PYTHONPATH=$(printf %q "$d"):\$PYTHONPATH python3 -c 'import mujoco'" >/dev/null 2>&1; then
+            printf '%s' "$d"
+            return 0
+        fi
+    done
+    return 1
+}

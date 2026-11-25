@@ -138,3 +138,31 @@ class FrankaSpiralInserter:
                           path=ref.path[::5].tolist())
             self.last_result = result
         return result
+
+
+def move_keep_wrist(robot, target, *, vertical=False):
+    """Straight-line peg-tip move with the tool pointing down at its CURRENT yaw.
+
+    The localizer's ``_move`` turns the tool to face each move's direction
+    (probe_rotation), which for sideways moves can demand a joint-7 angle past its
+    limit ("Joints not reachable!", 2026-11-24). Insertion does not care about yaw,
+    so keep it fixed. Uses the localizer's checked waypoint routine (IK, retries,
+    force backstop) unchanged.
+    """
+    from kilo.localization.common import PROBE_LOOKAHEAD, TRAVEL_SPEED, probe_rotation
+    from kilo.robot.frankapy_localization import FORCE_LIMIT
+
+    if robot.force_zero is None:
+        raise RuntimeError("Zero the force readings before moving the arm")
+    joints = robot._read_joints()
+    start, current_rotation = robot._pose(joints)
+    target = np.r_[start[:2], target] if vertical else np.asarray(target, float)
+    length = float(np.linalg.norm(target - start))
+    if length < 1e-6:
+        return joints
+    rotation = probe_rotation(np.zeros(3), current_rotation)  # tool down, same yaw
+    thresholds = (np.abs(robot.force_zero) + FORCE_LIMIT).tolist() + [10.] * 3
+    steps = int(np.ceil(length / PROBE_LOOKAHEAD))
+    for waypoint in np.linspace(start, target, steps + 1)[1:]:
+        joints, _ = robot._move_to_waypoint(waypoint, rotation, joints, thresholds, speed=TRAVEL_SPEED)
+    return joints
