@@ -34,7 +34,7 @@ kilo/
   localization/   Phase 1: contact detection, box filter, hole-search filter
   insertion/      Phase 2: spiral baseline, MuJoCo env, PPO training
   sim/            MuJoCo scene construction (Panda + peg + box)
-  robot/          Real-robot interface (wraps the course control stack)
+  robot/          FrankaPy adapter for Phase 1 hardware localization
 configs/          Shared parameters (hole radius R, clearance, thresholds)
 artifacts/        Published policy checkpoint, config and evaluation summary
 scripts/          Training, evaluation, replay and localization entry points
@@ -55,6 +55,7 @@ Status of each module:
 | `robot/` | Real-robot probing: shared guarded probe; backends for frankapy (default, untested on hardware), panda-py (experimental) and MuJoCo (tested) | Phase 1 |
 | `localization/touch_localizer.py`, `localization/fit.py` | Phase 1 search + box fit + face-normal verification, for any backend | Phase 1 |
 | `scripts/real/phase1.py` | Real-robot Phase 1 experiments (check, table, noise, touch, groundtruth, localize, refit). Lab guide: [`docs/real_robot.md`](docs/real_robot.md) | Phase 1 |
+| `robot/frankapy_localization.py` | FrankaPy joint-motion adapter for the shared plate search | Phase 1 |
 
 ## Setup
 
@@ -342,6 +343,57 @@ For a matched physical-grasp baseline, use `scripts/evaluate_insertion.py`
 with `--config configs/contact_grasp.yaml` and omit `--model`. To test transfer
 of the existing rigid-grasp policy, also pass
 `--model artifacts/insertion_v4/best_model.zip`. Use identical seeds for both.
+
+## Hardware localization
+
+Run from the project root in the course ROS and FrankaPy environment, with the
+peg already grasped. Both entry points use the same snake, four contacts,
+and plate fit. The search rectangle in the robot base frame spans
+0.32 to 0.61 m in x and −0.18 to +0.18 m in y.
+
+```bash
+python scripts/localize_live.py --table-z 0.0072
+python scripts/localize_live.py --table-z 0.0072 --execute
+```
+
+The first command prints the sweep size without connecting. The second moves
+the arm. The example uses the measured tabletop height on the lab station.
+Without `--table-z`, the runner uses the Lab 2 model's tabletop height.
+Keep the arm stationary with the peg grasped for the initial five seconds.
+The runner samples Fx, Fy, and Fz at a target 20 Hz, saves the raw readings
+to `force-zero.csv` in the run directory, and subtracts their per-axis means before motion.
+The sweep starts after the recording obtains at least 10 samples per second
+on average.
+
+The live adapter uses the MuJoCo peg-tip model to solve joint waypoints along
+each sweep leg or crossing. It uses Lab 2's 0.01 rad joint tracking tolerance,
+0.5 mm and 0.003 rad IK tolerances, 0.30 rad/s² joint acceleration, and
+0.5 s minimum skill duration. The joint speed limit is 0.15 rad/s for joints
+1–6 and 0.225 rad/s for joint 7, which rotates about tool Z. Travel waits for
+each skill.
+Probes track slow drift in FrankaPy's horizontal wrench and stop immediately
+above 5 N over that baseline. The robot records the first hit, waits for fresh
+stationary feedback, then lifts vertically from the measured tip position.
+Recoverable FrankaPy communication or joint-generator errors and short
+waypoints can retry up to twice from the measured joints after the controller
+returns to idle. Collision and reflex reports end the run. The simulation uses
+a 5 N horizontal contact threshold. The 20 N force cutoff stays separate.
+After estimating the plate center and yaw modulo 180°, the live runner measures
+the top surface height and starts the hole particle filter. The first two
+candidates come from the CAD offset and the two possible plate orientations.
+The filter chooses subsequent candidates using the measured presses. During
+each descent, a 5 N vertical force residual ends the press, and travel of at
+least 2 mm below the measured surface counts as a drop. The nominal radial
+capture clearance is 0.2 mm. Print and calibration error can make drops hard to
+find, so the run can end with the hole unconfirmed.
+
+Each live run saves the plate fit, forces, peg-tip paths, and hole search under
+`runs/real`. Pass `--out` to save to a different folder. Generate the restored
+GitHub localization charts and hole plot from the recorded data with:
+
+```bash
+python scripts/real/view_localization.py --latest
+```
 
 ## Working together
 

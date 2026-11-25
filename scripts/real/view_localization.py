@@ -12,10 +12,11 @@ Writes into <run>/charts/ (or --out):
   3_estimate.png      estimated centre x / y / yaw and worst contact gap vs contact count
   4_forces.png        contact-force residual over every probe, with threshold lines
   5_motion.png        per-path execution audit (streamed paths: duration, tracking, lag)
+  6_hole.png          measured vertical presses and the final hole particle distribution
   report.txt          outcome, safety stop, controller errors, estimate and score
 
-About the "belief": the localizer is not a particle filter. It fits the box pose by
-least squares to the touch contacts (kilo.localization.fit.fit_box). The belief map
+The plate localizer fits the box pose by least squares to the touch contacts
+(kilo.localization.fit.fit_box). The plate belief map
 shows the same evidence over candidate box centres c:
     rms_gap(c) = min over yaw of sqrt(mean_i gap_i(c, yaw)^2),
 where gap_i is how far contact i sits from the box outline grown by the peg radius
@@ -276,6 +277,7 @@ def fig_forces(plt, data, arrays, geo, out):
     if not names:
         return None
     labels = data.get("probe_labels") or names
+    directional = ((data.get("config") or {}).get("contact") or {}).get("directional_residual")
     fig, ax = plt.subplots(figsize=(11, 4))
     offset = 0.
     for i, name in enumerate(names):
@@ -283,8 +285,11 @@ def fig_forces(plt, data, arrays, geo, out):
         if a.ndim != 2 or len(a) < 2 or a.shape[1] < 7:
             continue
         t = a[:, 0] - a[0, 0] + offset
-        mag = np.linalg.norm(a[:, 4:7], axis=1)
         is_contact_probe = i < len(labels) and not labels[i].startswith("descent")
+        if directional:
+            mag = np.linalg.norm(a[:, 4:6], axis=1) if is_contact_probe else np.abs(a[:, 6])
+        else:
+            mag = np.linalg.norm(a[:, 4:7], axis=1)
         ax.plot(t, mag, color=BLUE if is_contact_probe else AQUA, lw=1.2)
         if mag.max() > threshold:
             j = int(np.argmax(mag > threshold))
@@ -302,7 +307,7 @@ def fig_forces(plt, data, arrays, geo, out):
     ax.plot([], [], "o", color=ORANGE, label="first sample over threshold")
     ax.legend(loc="upper right", fontsize=8)
     ax.set_xlabel("probe time, concatenated (s)")
-    ax.set_ylabel("force residual |F - baseline| (N)")
+    ax.set_ylabel("XY or Z force residual (N)" if directional else "force residual |F - baseline| (N)")
     ax.set_ylim(0, max(safety * 1.1, 1))
     ax.set_title("Contact-force residual during every probe")
     fig.tight_layout()
@@ -348,6 +353,30 @@ def fig_motion(plt, data, out):
     return fig
 
 
+def fig_hole(plt, data, arrays, out):
+    hole = data.get("hole")
+    if not hole or not hole.get("reference"):
+        return None
+    fig, ax = plt.subplots(figsize=(7, 6))
+    if "hole_particles" in arrays:
+        points, weights = arrays["hole_particles"], arrays["hole_weights"]
+        ax.scatter(*points.T, s=4, c=weights, cmap="Blues", alpha=.4, label="hole particles")
+    for dropped, color, marker, label in ((False, ORANGE, "x", "no drop"),
+                                         (True, GREEN, "o", "drop")):
+        points = [p["tip"][:2] for p in hole["presses"] if p["dropped"] == dropped]
+        if points:
+            ax.scatter(*np.asarray(points).T, color=color, marker=marker, label=label)
+    ax.plot(*hole["reference"]["tip"][:2], "+", color=INK, label="plate height reference")
+    if hole["status"] == "found":
+        ax.plot(*hole["center"], "*", color=VIOLET, ms=10, label="hole estimate")
+    mm_axes(ax)
+    ax.set_title(f"Hole search ({hole['status'].replace('_', ' ')})")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out / "6_hole.png", dpi=150)
+    return fig
+
+
 # ----------------------------------------------------------------------------- report
 def report(run, data, res, truth, geo):
     half, radius, corners, force_weight, *_ = geo
@@ -361,6 +390,12 @@ def report(run, data, res, truth, geo):
                      f" worst gap {res['max_gap_mm']:.2f} mm, {res.get('seconds', 0):.0f} s")
     if res.get("score"):
         lines.append("score vs truth: " + json.dumps(res["score"]))
+    hole = data.get("hole") or {}
+    if hole.get("status"):
+        lines.append(f"hole search: {hole['status']} after {len(hole['presses'])} presses")
+        if hole["status"] == "found":
+            x, y = hole["center"]
+            lines.append(f"  hole centre ({x:.4f}, {y:.4f}) m, particle std {1000 * hole['std_m']:.2f} mm")
     contacts = data.get("contacts") or []
     lines.append(f"contacts: {len(contacts)}")
     for c in contacts:
@@ -430,7 +465,8 @@ def main():
                      ("belief", lambda: fig_belief(plt, data, res, truth, geo, out)),
                      ("estimate", lambda: fig_estimate(plt, data, truth, geo, out)),
                      ("forces", lambda: fig_forces(plt, data, arrays, geo, out)),
-                     ("motion", lambda: fig_motion(plt, data, out))):
+                     ("motion", lambda: fig_motion(plt, data, out)),
+                     ("hole", lambda: fig_hole(plt, data, arrays, out))):
         try:
             if fn() is not None:
                 made.append(name)
